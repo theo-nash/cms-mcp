@@ -20,11 +20,11 @@ export const PlanSchema = z.object({
   brandId: z.string(),
   title: z.string(),
   type: z.nativeEnum(PlanType),
-  parentPlanId: z.string().optional(), // For micro plans
-  campaignId: z.string().optional(), // Link to campaign
+  parentPlanId: z.string().nullable().optional(), // For micro plans
+  campaignId: z.string().nullable().optional(), // Link to campaign (only for master plans)
   dateRange: z.object({
-    start: z.date(),
-    end: z.date(),
+    start: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
+    end: z.union([z.string(), z.date()]).transform((val) => new Date(val)),
   }),
   goals: z.array(z.string()),
   targetAudience: z.string(),

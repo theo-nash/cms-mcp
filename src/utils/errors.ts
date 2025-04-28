@@ -4,15 +4,21 @@ import express, { Request, Response, NextFunction, ErrorRequestHandler } from 'e
 export class AppError extends Error {
     public readonly statusCode: number;
     public readonly isOperational: boolean;
+    public readonly code: string;
+    public readonly details?: Record<string, any>;
 
     constructor(
         message: string,
         statusCode: number = 500,
-        isOperational: boolean = true
+        isOperational: boolean = true,
+        code: string = 'INTERNAL_SERVER_ERROR',
+        details?: Record<string, any>
     ) {
         super(message);
         this.statusCode = statusCode;
         this.isOperational = isOperational;
+        this.code = code;
+        this.details = details;
 
         // Capture stack trace
         Error.captureStackTrace(this, this.constructor);
@@ -21,29 +27,29 @@ export class AppError extends Error {
 
 // 404 - Not Found
 export class NotFoundError extends AppError {
-    constructor(message: string = 'Resource not found') {
-        super(message, 404);
+    constructor(message: string = 'Resource not found', details?: Record<string, any>) {
+        super(message, 404, true, 'NOT_FOUND', details);
     }
 }
 
 // 400 - Bad Request
 export class BadRequestError extends AppError {
-    constructor(message: string = 'Bad request') {
-        super(message, 400);
+    constructor(message: string = 'Bad request', details?: Record<string, any>) {
+        super(message, 400, true, 'BAD_REQUEST', details);
     }
 }
 
 // 403 - Forbidden
 export class ForbiddenError extends AppError {
-    constructor(message: string = 'Access forbidden') {
-        super(message, 403);
+    constructor(message: string = 'Access forbidden', details?: Record<string, any>) {
+        super(message, 403, true, 'FORBIDDEN', details);
     }
 }
 
 // 409 - Conflict
 export class ConflictError extends AppError {
-    constructor(message: string = 'Resource conflict') {
-        super(message, 409);
+    constructor(message: string = 'Resource conflict', details?: Record<string, any>) {
+        super(message, 409, true, 'CONFLICT', details);
     }
 }
 
@@ -52,15 +58,15 @@ export class ValidationError extends AppError {
     public readonly errors: Record<string, string[]>;
 
     constructor(message: string = 'Validation failed', errors: Record<string, string[]> = {}) {
-        super(message, 422);
+        super(message, 422, true, 'VALIDATION_ERROR', { errors });
         this.errors = errors;
     }
 }
 
 // 500 - Internal Server Error
 export class InternalServerError extends AppError {
-    constructor(message: string = 'Internal server error') {
-        super(message, 500, false);
+    constructor(message: string = 'Internal server error', details?: Record<string, any>) {
+        super(message, 500, false, 'INTERNAL_SERVER_ERROR', details);
     }
 }
 
@@ -86,8 +92,12 @@ export const errorHandler: ErrorRequestHandler = (
     if (err instanceof AppError) {
         res.status(err.statusCode).json({
             status: 'error',
+            code: err.code,
             message: err.message,
-            ...(err instanceof ValidationError && { errors: err.errors })
+            ...(err.details && { details: err.details }),
+            ...(err instanceof ValidationError && { errors: err.errors }),
+            timestamp: new Date().toISOString(),
+            path: req.path
         });
         return;
     }
@@ -96,18 +106,25 @@ export const errorHandler: ErrorRequestHandler = (
     if (err.name === 'ValidationError') {
         res.status(422).json({
             status: 'error',
+            code: 'VALIDATION_ERROR',
             message: 'Validation failed',
-            errors: (err as ExpressValidationError).errors
+            errors: (err as ExpressValidationError).errors,
+            timestamp: new Date().toISOString(),
+            path: req.path
         });
         return;
     }
 
     // Handle MongoDB duplicate key errors
     if ('code' in err && err.code === 11000) {
+        const field = Object.keys((err as MongoError).keyPattern)[0];
         res.status(409).json({
             status: 'error',
-            message: 'Duplicate key error',
-            field: Object.keys((err as MongoError).keyPattern)[0]
+            code: 'DUPLICATE_KEY',
+            message: `Duplicate value for field: ${field}`,
+            field,
+            timestamp: new Date().toISOString(),
+            path: req.path
         });
         return;
     }
@@ -118,6 +135,9 @@ export const errorHandler: ErrorRequestHandler = (
     // Return generic error for non-operational errors
     res.status(500).json({
         status: 'error',
-        message: 'Internal server error'
+        code: 'INTERNAL_SERVER_ERROR',
+        message: 'Internal server error',
+        timestamp: new Date().toISOString(),
+        path: req.path
     });
 };

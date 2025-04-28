@@ -18,6 +18,11 @@ export async function setupApiServer() {
   app.use(cors());
   app.use(json());
 
+  // Health check endpoint
+  app.get("/api/v1/health", (req, res) => {
+    res.status(200).json({ status: "ok" });
+  });
+
   // Swagger documentation
   setupSwagger(app);
 
