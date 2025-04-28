@@ -1,0 +1,30 @@
+services:
+  app:
+    build:
+      context: .
+      target: production
+    container_name: cms-mcp-server
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - NODE_ENV=production
+      - MONGODB_URI=mongodb://mongo:27017/cms-mcp
+      - SCHEDULER_INTERVAL=60000
+    depends_on:
+      - mongo
+    volumes:
+      - ./logs:/app/logs
+    command: node dist/index.js
+
+  mongo:
+    image: mongo:6
+    container_name: cms-mcp-mongo
+    restart: unless-stopped
+    volumes:
+      - mongo-data:/data/db
+    ports:
+      - "27017:27017"
+
+volumes:
+  mongo-data:
