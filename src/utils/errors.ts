@@ -129,6 +129,29 @@ export const errorHandler: ErrorRequestHandler = (
         return;
     }
 
+    // Handle service-specific errors with better classification
+    if (err.message?.includes('not found')) {
+        res.status(404).json({
+            status: 'error',
+            code: 'NOT_FOUND',
+            message: err.message,
+            timestamp: new Date().toISOString(),
+            path: req.path
+        });
+        return;
+    }
+
+    if (err.message?.includes('Invalid state transition')) {
+        res.status(400).json({
+            status: 'error',
+            code: 'INVALID_STATE_TRANSITION',
+            message: err.message,
+            timestamp: new Date().toISOString(),
+            path: req.path
+        });
+        return;
+    }
+
     // Log unexpected errors
     console.error('Unexpected error:', err);
 

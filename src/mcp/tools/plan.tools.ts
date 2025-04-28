@@ -6,15 +6,13 @@ import { PlanState, PlanType } from "../../models/plan.model.js";
 export function registerPlanTools(server: McpServer) {
     const planService = new PlanService();
 
-    // Create plan
+    // Create master plan
     server.tool(
-        "createPlan",
-        "Create a new content plan for a brand. Use this to define a campaign or initiative, including its goals, target audience, channels, and schedule. Supports both master and micro plans, and can link to a parent plan.",
+        "createMasterPlan",
+        "Create a new master plan for a campaign. Use this to define a high-level content strategy, including its goals, target audience, channels, and schedule.",
         {
-            brand_id: z.string(),
+            campaign_id: z.string(),
             title: z.string(),
-            type: z.enum(['master', 'micro']),
-            parent_plan_id: z.string().optional(),
             date_range: z.object({
                 start: z.string().datetime(),
                 end: z.string().datetime()
@@ -25,12 +23,9 @@ export function registerPlanTools(server: McpServer) {
             user_id: z.string()
         },
         async (params) => {
-            // Transform params to match service interface
-            const planData = {
-                brandId: params.brand_id,
+            const result = await planService.createMasterPlan({
+                campaignId: params.campaign_id,
                 title: params.title,
-                type: params.type === 'master' ? PlanType.Master : PlanType.Micro,
-                parentPlanId: params.parent_plan_id,
                 dateRange: {
                     start: new Date(params.date_range.start),
                     end: new Date(params.date_range.end)
@@ -39,16 +34,57 @@ export function registerPlanTools(server: McpServer) {
                 targetAudience: params.target_audience,
                 channels: params.channels,
                 userId: params.user_id
-            };
-
-            // Create the plan
-            const result = await planService.createPlan(planData);
+            });
 
             return {
                 content: [
                     {
                         type: "text",
-                        text: `Plan created: ${params.title} (ID: ${result._id})`
+                        text: `Master plan created: ${params.title} (ID: ${result._id})`
+                    }
+                ],
+                plan_id: result._id,
+                title: result.title,
+                state: result.state
+            };
+        }
+    );
+
+    // Create micro plan
+    server.tool(
+        "createMicroPlan",
+        "Create a new micro plan under a master plan. Use this to define specific content pieces or initiatives that support the master plan's goals.",
+        {
+            master_plan_id: z.string(),
+            title: z.string(),
+            date_range: z.object({
+                start: z.string().datetime(),
+                end: z.string().datetime()
+            }),
+            goals: z.array(z.string()),
+            target_audience: z.string(),
+            channels: z.array(z.string()),
+            user_id: z.string()
+        },
+        async (params) => {
+            const result = await planService.createMicroPlan({
+                masterPlanId: params.master_plan_id,
+                title: params.title,
+                dateRange: {
+                    start: new Date(params.date_range.start),
+                    end: new Date(params.date_range.end)
+                },
+                goals: params.goals,
+                targetAudience: params.target_audience,
+                channels: params.channels,
+                userId: params.user_id
+            });
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Micro plan created: ${params.title} (ID: ${result._id})`
                     }
                 ],
                 plan_id: result._id,
@@ -80,10 +116,8 @@ export function registerPlanTools(server: McpServer) {
                     }
                 ],
                 plan_id: plan._id,
-                brand_id: plan.brandId,
                 title: plan.title,
                 type: plan.type,
-                parent_plan_id: plan.parentPlanId,
                 date_range: {
                     start: plan.dateRange.start.toISOString(),
                     end: plan.dateRange.end.toISOString()
@@ -260,9 +294,61 @@ export function registerPlanTools(server: McpServer) {
                 ],
                 plan_id: result._id,
                 title: result.title,
-                state: result.state,
-                is_active: result.isActive,
-                version: result.stateMetadata.version
+                state: result.state
+            };
+        }
+    );
+
+    // Get micro plans by master plan ID
+    server.tool(
+        "getMicroPlansByMasterId",
+        "Get all micro plans associated with a master plan.",
+        {
+            master_plan_id: z.string()
+        },
+        async (params) => {
+            const microPlans = await planService.getMicroPlansByMasterId(params.master_plan_id);
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Found ${microPlans.length} micro plans for master plan ${params.master_plan_id}`
+                    }
+                ],
+                micro_plans: microPlans.map(plan => ({
+                    plan_id: plan._id,
+                    title: plan.title,
+                    state: plan.state,
+                    is_active: plan.isActive
+                }))
+            };
+        }
+    );
+
+    // Get master plans by campaign ID
+    server.tool(
+        "getMasterPlansByCampaignId",
+        "Get all master plans associated with a campaign.",
+        {
+            campaign_id: z.string()
+        },
+        async (params) => {
+            const masterPlans = await planService.getMasterPlansByCampaignId(params.campaign_id);
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Found ${masterPlans.length} master plans for campaign ${params.campaign_id}`
+                    }
+                ],
+                master_plans: masterPlans.map(plan => ({
+                    plan_id: plan._id,
+                    title: plan.title,
+                    state: plan.state,
+                    is_active: plan.isActive
+                }))
             };
         }
     );

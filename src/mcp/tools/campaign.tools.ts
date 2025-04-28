@@ -23,7 +23,8 @@ export function registerCampaignTools(server: McpServer) {
         startDate: new Date(params.startDate),
         endDate: new Date(params.endDate),
         objectives: params.objectives || [],
-        status: "draft",
+        brandId: "default-brand-id",
+        userId: "system"
       });
 
       return {
@@ -110,7 +111,8 @@ export function registerCampaignTools(server: McpServer) {
 
       const result = await campaignService.updateCampaign(
         params.campaign_id,
-        updates
+        updates,
+        "system"
       );
       if (!result) {
         throw new Error(`Campaign with ID ${params.campaign_id} not found`);

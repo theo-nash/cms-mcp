@@ -1,7 +1,9 @@
 import { Router, RequestHandler } from "express";
 import { body, param } from "express-validator";
-import { CampaignService } from "../../services/campaign.service.js";
+import { CampaignCreationData, CampaignService } from "../../services/campaign.service.js";
 import { validateRequest } from "../middleware/validate.js";
+import { Campaign, CampaignStatus } from "../../models/campaign.model.js";
+import { sanitizeBody, transformDates } from "../middleware/transform.js";
 
 const router = Router();
 const campaignService = new CampaignService();
@@ -83,32 +85,60 @@ const getCampaignByIdHandler: RequestHandler = async (req, res, next) => {
  *               - description
  *               - startDate
  *               - endDate
+ *               - brandId
+ *               - userId
  *             properties:
  *               name:
  *                 type: string
+ *                 description: Campaign name
  *               description:
  *                 type: string
+ *                 description: Campaign description
  *               startDate:
  *                 type: string
  *                 format: date-time
+ *                 description: Campaign start date
  *               endDate:
  *                 type: string
  *                 format: date-time
+ *                 description: Campaign end date
  *               objectives:
  *                 type: array
  *                 items:
  *                   type: string
+ *                 description: Campaign objectives
+ *               brandId:
+ *                 type: string
+ *                 description: ID of the associated brand
+ *               userId:
+ *                 type: string
+ *                 description: User ID creating the campaign
  *     responses:
  *       201:
- *         description: Campaign created
+ *         description: Campaign created successfully
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Campaign'
+ *       400:
+ *         description: Invalid input data
  */
 const createCampaignHandler: RequestHandler = async (req, res, next) => {
   try {
-    const campaign = await campaignService.createCampaign(req.body);
+    // Create a properly typed campaign data object
+    const campaignData: CampaignCreationData = {
+      brandId: req.body.brandId,
+      name: req.body.name,
+      // Make description optional to align with model schema
+      description: req.body.description || undefined,
+      // Convert ISO date strings to Date objects
+      startDate: req.body.startDate,
+      endDate: req.body.endDate,
+      objectives: req.body.objectives || [],
+      userId: req.body.userId || "default-user-id"
+    };
+
+    const campaign = await campaignService.createCampaign(campaignData);
     void res.status(201).json(campaign);
   } catch (error) {
     next(error);
@@ -132,23 +162,68 @@ const createCampaignHandler: RequestHandler = async (req, res, next) => {
  *       content:
  *         application/json:
  *           schema:
- *             $ref: '#/components/schemas/CampaignUpdate'
+ *             type: object
+ *             properties:
+ *               name:
+ *                 type: string
+ *                 description: Campaign name
+ *               description:
+ *                 type: string
+ *                 description: Campaign description
+ *               startDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Campaign start date
+ *               endDate:
+ *                 type: string
+ *                 format: date-time
+ *                 description: Campaign end date
+ *               objectives:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Campaign objectives
+ *               status:
+ *                 type: string
+ *                 enum: [draft, active, completed, archived]
+ *                 description: Campaign status
+ *               userId:
+ *                 type: string
+ *                 description: User ID updating the campaign
  *     responses:
  *       200:
- *         description: Campaign updated
+ *         description: Campaign updated successfully
  *         content:
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Campaign'
  *       404:
  *         description: Campaign not found
+ *       400:
+ *         description: Invalid input data
  */
 const updateCampaignHandler: RequestHandler = async (req, res, next) => {
   try {
+    // Create a sanitized update object with proper types
+    const updates: Partial<Omit<Campaign, "_id">> = {};
+
+    if (req.body.name !== undefined) updates.name = req.body.name;
+    if (req.body.description !== undefined) updates.description = req.body.description;
+    if (req.body.startDate !== undefined) updates.startDate = new Date(req.body.startDate);
+    if (req.body.endDate !== undefined) updates.endDate = new Date(req.body.endDate);
+    if (req.body.objectives !== undefined) updates.objectives = req.body.objectives;
+
+    // Use enum for status instead of string literals
+    if (req.body.status !== undefined) {
+      updates.status = req.body.status as CampaignStatus;
+    }
+
     const campaign = await campaignService.updateCampaign(
       req.params.id,
-      req.body
+      updates,
+      req.body.userId || "default-user-id"
     );
+
     if (!campaign) {
       void res.status(404).json({ message: "Campaign not found" });
       return;
@@ -159,16 +234,26 @@ const updateCampaignHandler: RequestHandler = async (req, res, next) => {
   }
 };
 
+
 router.get("/", getAllCampaignsHandler);
 router.get("/:id", param("id").isString(), validateRequest, getCampaignByIdHandler);
 router.post(
   "/",
   [
+    // Transform dates before validation
+    transformDates(["startDate", "endDate"]),
+    // Sanitize to include only expected fields
+    sanitizeBody([
+      "name", "description", "startDate", "endDate",
+      "objectives", "brandId", "userId"
+    ]),
     body("name").isString().notEmpty(),
     body("description").isString().notEmpty(),
     body("startDate").isISO8601(),
     body("endDate").isISO8601(),
     body("objectives").optional().isArray(),
+    body("brandId").isString().notEmpty(),
+    body("userId").isString().notEmpty()
   ],
   validateRequest,
   createCampaignHandler
@@ -176,6 +261,7 @@ router.post(
 router.put(
   "/:id",
   [
+    transformDates(["startDate", "endDate"]),
     param("id").isString(),
     body("name").optional().isString(),
     body("description").optional().isString(),
@@ -185,6 +271,7 @@ router.put(
     body("status")
       .optional()
       .isIn(["draft", "active", "completed", "archived"]),
+    body("userId").isString().notEmpty(),
   ],
   validateRequest,
   updateCampaignHandler

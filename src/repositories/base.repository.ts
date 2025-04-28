@@ -7,10 +7,10 @@ import { z } from "zod";
  */
 export abstract class BaseRepository<T extends Document> {
     protected collection!: Collection;
-    protected schema: z.ZodObject<any, any, any>
+    protected schema: z.ZodType<T, z.ZodTypeDef, any>;
     private collectionName: string;
 
-    constructor(collectionName: string, schema: z.ZodObject<any, any, any>) {
+    constructor(collectionName: string, schema: z.ZodType<T, z.ZodTypeDef, any>) {
         this.collectionName = collectionName;
         this.schema = schema;
     }
@@ -44,7 +44,7 @@ export abstract class BaseRepository<T extends Document> {
      */
     protected validate(data: any): T {
         const validated = this.schema.parse(data);
-        return validated as T; // Explicit cast to type T
+        return validated as T;
     }
 
     /**
@@ -71,7 +71,6 @@ export abstract class BaseRepository<T extends Document> {
 
         if (!result) return null;
 
-        // Convert _id to string
         const document = {
             ...result,
             _id: this.fromObjectId(result._id)
@@ -86,20 +85,16 @@ export abstract class BaseRepository<T extends Document> {
     async create(data: Omit<T, "_id" | "created_at" | "updated_at">): Promise<T> {
         await this.initCollection();
         const now = new Date();
-        // Ensure timestamps are always set
         const dataWithTimestamps = {
             ...data,
             created_at: now,
             updated_at: now,
         } as unknown as Omit<T, "_id">;
 
-        // Validate data
         const validatedData = this.validate(dataWithTimestamps as unknown as T);
 
-        // Insert document
         const result = await this.collection.insertOne(validatedData as any);
 
-        // Return created document with ID
         return {
             ...validatedData,
             _id: this.fromObjectId(result.insertedId)
@@ -107,28 +102,28 @@ export abstract class BaseRepository<T extends Document> {
     }
 
     /**
-     * Update a document
-     */
+    * Update a document
+    */
     async update(id: string, data: Partial<Omit<T, "_id">>): Promise<T | null> {
         await this.initCollection();
-        // Find existing document
         const existingDoc = await this.findById(id);
         if (!existingDoc) return null;
 
-        // Merge with updates
         const updatedDoc = {
             ...existingDoc,
             ...data,
             updated_at: new Date()
         };
 
-        // Validate updated document
         const validatedDoc = this.validate(updatedDoc);
 
-        // Update in database
+        // Create a copy without the _id field for the update operation
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { _id, ...updateData } = validatedDoc as any;
+
         await this.collection.updateOne(
             { _id: this.toObjectId(id) },
-            { $set: validatedDoc }
+            { $set: updateData }
         );
 
         return validatedDoc;

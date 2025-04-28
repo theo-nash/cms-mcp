@@ -9,18 +9,16 @@ export function registerContentTools(server: McpServer) {
     // Create content
     server.tool(
         "createContent",
-        "Create a new content item for a specific brand and plan. Use this to draft articles, posts, or other content pieces and associate them with a user.",
+        "Create a new content item for a specific micro plan. Use this to draft articles, posts, or other content pieces.",
         {
-            plan_id: z.string(),
-            brand_id: z.string(),
+            micro_plan_id: z.string(),
             title: z.string(),
             content: z.string(),
             user_id: z.string()
         },
         async (params) => {
             const result = await contentService.createContent({
-                planId: params.plan_id,
-                brandId: params.brand_id,
+                microPlanId: params.micro_plan_id,
                 title: params.title,
                 content: params.content,
                 userId: params.user_id
@@ -30,7 +28,7 @@ export function registerContentTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Content created: ${params.title} (ID: ${params.plan_id})`
+                        text: `Content created: ${params.title} (ID: ${result._id})`
                     }
                 ],
                 content_id: result._id,
@@ -43,7 +41,7 @@ export function registerContentTools(server: McpServer) {
     // Schedule content
     server.tool(
         "scheduleContent",
-        "Schedule a content item for publication at a specific date and time. Use this to automate when content will be published for a brand.",
+        "Schedule a content item for publication at a specific date and time.",
         {
             content_id: z.string(),
             publish_at: z.string().datetime(),
@@ -79,25 +77,80 @@ export function registerContentTools(server: McpServer) {
     // Approve content
     server.tool(
         "approveContent",
-        "Approve a content item for publication. Use this to mark content as ready after review, optionally including reviewer comments. This ensures that the content meets the required standards before going live.",
+        "Approve a content item for publication. Use this to mark content as ready after review, optionally including reviewer comments.",
         {
             content_id: z.string(),
             user_id: z.string(),
             comments: z.string().optional()
         },
         async (params) => {
-            // Implementation for approving content
-            // Would call contentService.transitionContentState()
+            const result = await contentService.transitionContentState(
+                params.content_id,
+                ContentState.Ready,
+                {
+                    userId: params.user_id,
+                    comments: params.comments
+                }
+            );
+
+            if (!result) {
+                throw new Error(`Content with ID ${params.content_id} not found`);
+            }
 
             return {
                 content: [
                     {
                         type: "text",
-                        text: `Content approved: ${params.content_id}`
+                        text: `Content approved: ${result.title} (ID: ${params.content_id})`
                     }
                 ],
-                content_id: params.content_id,
-                state: ContentState.Ready
+                content_id: result._id,
+                title: result.title,
+                state: result.state
+            };
+        }
+    );
+
+    // Get content by master plan ID
+    server.tool(
+        "getContentByMasterPlanId",
+        "Get all content associated with a master plan by retrieving content from all its micro plans.",
+        {
+            master_plan_id: z.string()
+        },
+        async (params) => {
+            const content = await contentService.getContentByMasterPlanId(params.master_plan_id);
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Found ${content.length} content items for master plan ${params.master_plan_id}`
+                    }
+                ],
+                content_items: content
+            };
+        }
+    );
+
+    // Get content by campaign ID
+    server.tool(
+        "getContentByCampaignId",
+        "Get all content associated with a campaign by retrieving content from all its master plans.",
+        {
+            campaign_id: z.string()
+        },
+        async (params) => {
+            const content = await contentService.getContentByCampaignId(params.campaign_id);
+
+            return {
+                content: [
+                    {
+                        type: "text",
+                        text: `Found ${content.length} content items for campaign ${params.campaign_id}`
+                    }
+                ],
+                content_items: content
             };
         }
     );

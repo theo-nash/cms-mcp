@@ -7,37 +7,17 @@ export class ContentRepository extends BaseRepository<Content> {
     }
 
     /**
-     * Find content by plan ID
+     * Find content by micro plan ID
      */
-    async findByPlanId(planId: string): Promise<Content[]> {
+    async findByMicroPlanId(microPlanId: string): Promise<Content[]> {
         await this.initCollection();
-        const results = await this.collection.find({ planId }).toArray();
+        const results = await this.collection.find({ microPlanId }).toArray();
 
         return results.map(result => {
-            // Convert _id to string
             const document = {
                 ...result,
                 _id: this.fromObjectId(result._id)
             };
-
-            return this.validate(document);
-        });
-    }
-
-    /**
-     * Find content by brand ID
-     */
-    async findByBrandId(brandId: string): Promise<Content[]> {
-        await this.initCollection();
-        const results = await this.collection.find({ brandId }).toArray();
-
-        return results.map(result => {
-            // Convert _id to string
-            const document = {
-                ...result,
-                _id: this.fromObjectId(result._id)
-            };
-
             return this.validate(document);
         });
     }
@@ -53,12 +33,44 @@ export class ContentRepository extends BaseRepository<Content> {
         }).toArray();
 
         return results.map(result => {
-            // Convert _id to string
             const document = {
                 ...result,
                 _id: this.fromObjectId(result._id)
             };
+            return this.validate(document);
+        });
+    }
 
+    /**
+    * Find content with scheduled dates
+    */
+    async findWithScheduledDate(): Promise<Content[]> {
+        await this.initCollection();
+        const results = await this.collection.find({
+            "stateMetadata.scheduledFor": { $exists: true }
+        }).toArray();
+
+        return results.map(result => {
+            const document = {
+                ...result,
+                _id: this.fromObjectId(result._id)
+            };
+            return this.validate(document);
+        });
+    }
+
+    /**
+     * Find content by state
+     */
+    async findByState(state: ContentState): Promise<Content[]> {
+        await this.initCollection();
+        const results = await this.collection.find({ state }).toArray();
+
+        return results.map(result => {
+            const document = {
+                ...result,
+                _id: this.fromObjectId(result._id)
+            };
             return this.validate(document);
         });
     }

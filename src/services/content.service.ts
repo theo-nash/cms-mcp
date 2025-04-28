@@ -1,13 +1,17 @@
 import { Content, ContentState } from "../models/content.model.js";
 import { ContentRepository } from "../repositories/content.repository.js";
+import { PlanRepository } from "../repositories/plan.repository.js";
 import { BrandRepository } from "../repositories/brand.repository.js";
+import { CampaignRepository } from "../repositories/campaign.repository.js";
+import { PlanType, MicroPlan, MasterPlan } from "../models/plan.model.js";
 
 export interface ContentCreationData {
-    planId: string;
-    brandId: string;
+    microPlanId: string;
     title: string;
     content: string;
     userId: string;
+    scheduledFor?: Date;
+    comments?: string;
 }
 
 export interface StateTransitionMetadata {
@@ -17,11 +21,15 @@ export interface StateTransitionMetadata {
 
 export class ContentService {
     private contentRepository: ContentRepository;
+    private planRepository: PlanRepository;
     private brandRepository: BrandRepository;
+    private campaignRepository: CampaignRepository;
 
     constructor() {
         this.contentRepository = new ContentRepository();
+        this.planRepository = new PlanRepository();
         this.brandRepository = new BrandRepository();
+        this.campaignRepository = new CampaignRepository();
     }
 
     /**
@@ -32,34 +40,37 @@ export class ContentService {
     }
 
     /**
-     * Get content by plan ID
+     * Get content by micro plan ID
      */
-    async getContentByPlanId(planId: string): Promise<Content[]> {
-        return await this.contentRepository.findByPlanId(planId);
-    }
-
-    /**
-     * Get content by brand ID
-     */
-    async getContentByBrandId(brandId: string): Promise<Content[]> {
-        return await this.contentRepository.findByBrandId(brandId);
+    async getContentByMicroPlanId(microPlanId: string): Promise<Content[]> {
+        return await this.contentRepository.findByMicroPlanId(microPlanId);
     }
 
     /**
      * Create new content
      */
     async createContent(data: ContentCreationData): Promise<Content> {
+        // Verify micro plan exists
+
+        // Add default user id if not provided
+        data.userId = data.userId || "default-user-id";
+
+        const microPlan = await this.planRepository.findById(data.microPlanId);
+        if (!microPlan || microPlan.type !== PlanType.Micro) {
+            throw new Error(`Micro plan with ID ${data.microPlanId} not found`);
+        }
+
         // Create state metadata
         const stateMetadata = {
             updatedAt: new Date(),
             updatedBy: data.userId,
-            comments: ""
+            comments: data.comments || "",
+            ...(data.scheduledFor && { scheduledFor: data.scheduledFor })
         };
 
         // Create the content with initial state
         return await this.contentRepository.create({
-            planId: data.planId,
-            brandId: data.brandId,
+            microPlanId: data.microPlanId,
             title: data.title,
             content: data.content,
             state: ContentState.Draft,
@@ -129,8 +140,23 @@ export class ContentService {
     }
 
     /**
-   * Transition content state
-   */
+    * Get all scheduled content, optionally filtered by state
+    */
+    async getScheduledContent(states?: ContentState[]): Promise<Content[]> {
+        // Get all content that has a scheduledFor date
+        const allContent = await this.contentRepository.findWithScheduledDate();
+
+        // Filter by state if specified
+        if (states && states.length > 0) {
+            return allContent.filter(content => states.includes(content.state));
+        }
+
+        return allContent;
+    }
+
+    /**
+     * Transition content state
+     */
     async transitionContentState(
         contentId: string,
         targetState: ContentState,
@@ -156,11 +182,14 @@ export class ContentService {
             comments: metadata.comments || content.stateMetadata.comments
         };
 
-        // Apply the state change
-        return await this.contentRepository.update(contentId, {
+        // Create update object without _id field
+        const updates: Partial<Omit<Content, "_id">> = {
             state: targetState,
             stateMetadata
-        });
+        };
+
+        // Apply the state change
+        return await this.contentRepository.update(contentId, updates);
     }
 
     /**
@@ -184,8 +213,26 @@ export class ContentService {
      * Validate content against brand guidelines
      */
     private async validateAgainstBrandGuidelines(content: Content): Promise<void> {
+        // Get the micro plan
+        const microPlan = await this.planRepository.findById(content.microPlanId) as MicroPlan;
+        if (!microPlan || microPlan.type !== PlanType.Micro) {
+            throw new Error(`Micro plan with ID ${content.microPlanId} not found`);
+        }
+
+        // Get the master plan
+        const masterPlan = await this.planRepository.findById(microPlan.masterPlanId) as MasterPlan;
+        if (!masterPlan || masterPlan.type !== PlanType.Master) {
+            throw new Error(`Master plan with ID ${microPlan.masterPlanId} not found`);
+        }
+
+        // Get the campaign
+        const campaign = await this.campaignRepository.findById(masterPlan.campaignId);
+        if (!campaign) {
+            throw new Error(`Campaign with ID ${masterPlan.campaignId} not found`);
+        }
+
         // Get brand guidelines
-        const brand = await this.brandRepository.findById(content.brandId);
+        const brand = await this.brandRepository.findById(campaign.brandId);
         if (!brand || !brand.guidelines) {
             // No guidelines to validate against
             return;
@@ -202,8 +249,37 @@ export class ContentService {
         if (foundAvoidedTerms.length > 0) {
             throw new Error(`Content contains avoided terms: ${foundAvoidedTerms.join(', ')}`);
         }
+    }
 
-        // Additional validation can be added here
-        // For MVP, we'll keep it simple
+    /**
+     * Get content by master plan ID
+     */
+    async getContentByMasterPlanId(masterPlanId: string): Promise<Content[]> {
+        // Get all micro plans for this master plan
+        const microPlans = await this.planRepository.findMicroPlansByMasterId(masterPlanId);
+
+        // Get content for each micro plan
+        const contentPromises = microPlans.map(microPlan =>
+            this.contentRepository.findByMicroPlanId(microPlan._id!)
+        );
+
+        const contentArrays = await Promise.all(contentPromises);
+        return contentArrays.flat();
+    }
+
+    /**
+     * Get content by campaign ID
+     */
+    async getContentByCampaignId(campaignId: string): Promise<Content[]> {
+        // Get all master plans for this campaign
+        const masterPlans = await this.planRepository.findMasterPlansByCampaignId(campaignId);
+
+        // Get content for each master plan
+        const contentPromises = masterPlans.map(masterPlan =>
+            this.getContentByMasterPlanId(masterPlan._id!)
+        );
+
+        const contentArrays = await Promise.all(contentPromises);
+        return contentArrays.flat();
     }
 }

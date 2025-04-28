@@ -18,7 +18,16 @@ export const BrandGuidelinesSchema = z.object({
     visualIdentity: z.object({
         primaryColor: z.string().optional(),
         secondaryColor: z.string().optional()
-    }).optional()
+    }).optional(),
+    narratives: z.object({
+        elevatorPitch: z.string().optional(),
+        shortNarrative: z.string().optional(),
+        fullNarrative: z.string().optional(),
+    }).optional(),
+    keyMessages: z.array(z.object({
+        audienceSegment: z.string(),
+        message: z.string()
+    })).optional()
 });
 
 // Brand schema

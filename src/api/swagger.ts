@@ -23,78 +23,97 @@ const options = {
           properties: {
             _id: {
               type: "string",
-              description: "Campaign ID",
+              description: "Unique identifier of the campaign",
             },
             name: {
               type: "string",
-              description: "Campaign name",
+              description: "Name of the campaign",
             },
             description: {
               type: "string",
-              description: "Campaign description",
+              description: "Description of the campaign",
             },
             startDate: {
               type: "string",
               format: "date-time",
-              description: "Campaign start date",
+              description: "Start date of the campaign",
             },
             endDate: {
               type: "string",
               format: "date-time",
-              description: "Campaign end date",
+              description: "End date of the campaign",
             },
             objectives: {
               type: "array",
               items: {
                 type: "string",
+                description: "Campaign objective",
               },
-              description: "Campaign objectives",
+              description: "List of campaign objectives",
             },
             status: {
               type: "string",
               enum: ["draft", "active", "completed", "archived"],
-              description: "Campaign status",
+              description: "Current status of the campaign",
+            },
+            userId: {
+              type: "string",
+              description: "ID of the user who created/updated the campaign",
+            },
+            createdAt: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp when the campaign was created",
+            },
+            updatedAt: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp when the campaign was last updated",
             },
           },
+          required: ["name", "description", "startDate", "endDate", "userId"],
         },
         Plan: {
           type: "object",
           properties: {
             _id: {
               type: "string",
-              description: "Plan ID",
+              description: "Unique identifier of the plan",
             },
             brandId: {
               type: "string",
-              description: "Brand ID",
+              description: "ID of the associated brand",
             },
             title: {
               type: "string",
-              description: "Plan title",
+              description: "Title of the plan",
             },
             type: {
               type: "string",
               enum: ["master", "micro"],
-              description: "Plan type",
+              description: "Type of the plan",
             },
             parentPlanId: {
               type: "string",
-              description: "Parent plan ID (for micro plans)",
+              description: "ID of the parent plan (for micro plans)",
             },
             campaignId: {
               type: "string",
-              description: "Campaign ID",
+              description: "ID of the associated campaign",
             },
             dateRange: {
               type: "object",
+              description: "Date range for the plan",
               properties: {
                 start: {
                   type: "string",
                   format: "date-time",
+                  description: "Start date",
                 },
                 end: {
                   type: "string",
                   format: "date-time",
+                  description: "End date",
                 },
               },
             },
@@ -102,44 +121,62 @@ const options = {
               type: "array",
               items: {
                 type: "string",
+                description: "Plan goal",
               },
+              description: "List of plan goals",
             },
             targetAudience: {
               type: "string",
+              description: "Target audience description",
             },
             channels: {
               type: "array",
               items: {
                 type: "string",
+                description: "Channel",
               },
+              description: "List of channels to be used",
             },
             state: {
               type: "string",
               enum: ["draft", "review", "approved", "active"],
+              description: "Current state of the plan",
             },
-            isActive: {
-              type: "boolean",
+            userId: {
+              type: "string",
+              description: "ID of the user who created/updated the plan",
+            },
+            createdAt: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp when the plan was created",
+            },
+            updatedAt: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp when the plan was last updated",
             },
           },
+          required: ["brandId", "title", "type", "dateRange", "goals", "targetAudience", "channels", "userId"],
         },
         Content: {
           type: "object",
           properties: {
             _id: {
               type: "string",
-              description: "Content ID",
+              description: "Unique identifier of the content",
             },
             planId: {
               type: "string",
-              description: "Plan ID",
+              description: "ID of the associated plan",
             },
             brandId: {
               type: "string",
-              description: "Brand ID",
+              description: "ID of the associated brand",
             },
             title: {
               type: "string",
-              description: "Content title",
+              description: "Title of the content",
             },
             content: {
               type: "string",
@@ -148,74 +185,280 @@ const options = {
             state: {
               type: "string",
               enum: ["draft", "ready", "published"],
-              description: "Content state",
+              description: "Current state of the content",
             },
-            stateMetadata: {
-              type: "object",
-              properties: {
-                scheduledFor: {
-                  type: "string",
-                  format: "date-time",
-                },
-                publishedAt: {
-                  type: "string",
-                  format: "date-time",
-                },
-                publishedUrl: {
-                  type: "string",
-                },
-              },
+            scheduledFor: {
+              type: "string",
+              format: "date-time",
+              description: "Scheduled publication date",
+            },
+            publishedAt: {
+              type: "string",
+              format: "date-time",
+              description: "Actual publication date",
+            },
+            publishedUrl: {
+              type: "string",
+              description: "URL where the content is published",
+            },
+            userId: {
+              type: "string",
+              description: "ID of the user who created/updated the content",
+            },
+            createdAt: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp when the content was created",
+            },
+            updatedAt: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp when the content was last updated",
             },
           },
+          required: ["planId", "brandId", "title", "content", "userId"],
         },
         Brand: {
           type: "object",
           properties: {
             _id: {
               type: "string",
-              description: "Brand ID",
+              description: "Unique identifier of the brand",
             },
             name: {
               type: "string",
-              description: "Brand name",
+              description: "Name of the brand",
             },
             description: {
               type: "string",
-              description: "Brand description",
+              description: "Description of the brand",
             },
             guidelines: {
               type: "object",
+              description: "Brand guidelines",
               properties: {
                 tone: {
                   type: "array",
                   items: {
                     type: "string",
+                    description: "Tone guideline",
                   },
+                  description: "List of tone guidelines",
                 },
                 vocabulary: {
                   type: "array",
                   items: {
                     type: "string",
+                    description: "Vocabulary guideline",
                   },
+                  description: "List of vocabulary guidelines",
                 },
                 avoidedTerms: {
                   type: "array",
                   items: {
                     type: "string",
+                    description: "Term to avoid",
                   },
+                  description: "List of terms to avoid",
                 },
                 visualIdentity: {
                   type: "object",
+                  description: "Visual identity guidelines",
                   properties: {
                     primaryColor: {
                       type: "string",
+                      description: "Primary brand color",
                     },
                     secondaryColor: {
                       type: "string",
+                      description: "Secondary brand color",
                     },
                   },
                 },
               },
+            },
+            createdAt: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp when the brand was created",
+            },
+            updatedAt: {
+              type: "string",
+              format: "date-time",
+              description: "Timestamp when the brand was last updated",
+            },
+          },
+          required: ["name", "description"],
+        },
+        CampaignUpdate: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Name of the campaign",
+            },
+            description: {
+              type: "string",
+              description: "Description of the campaign",
+            },
+            startDate: {
+              type: "string",
+              format: "date-time",
+              description: "Start date of the campaign",
+            },
+            endDate: {
+              type: "string",
+              format: "date-time",
+              description: "End date of the campaign",
+            },
+            objectives: {
+              type: "array",
+              items: {
+                type: "string",
+                description: "Campaign objective",
+              },
+              description: "List of campaign objectives",
+            },
+            status: {
+              type: "string",
+              enum: ["draft", "active", "completed", "archived"],
+              description: "Current status of the campaign",
+            },
+            userId: {
+              type: "string",
+              description: "ID of the user updating the campaign",
+            },
+          },
+        },
+        BrandUpdate: {
+          type: "object",
+          properties: {
+            name: {
+              type: "string",
+              description: "Name of the brand",
+            },
+            description: {
+              type: "string",
+              description: "Description of the brand",
+            },
+            guidelines: {
+              type: "object",
+              description: "Brand guidelines",
+              properties: {
+                tone: {
+                  type: "array",
+                  items: {
+                    type: "string",
+                    description: "Tone guideline",
+                  },
+                  description: "List of tone guidelines",
+                },
+                vocabulary: {
+                  type: "array",
+                  items: {
+                    type: "string",
+                    description: "Vocabulary guideline",
+                  },
+                  description: "List of vocabulary guidelines",
+                },
+                avoidedTerms: {
+                  type: "array",
+                  items: {
+                    type: "string",
+                    description: "Term to avoid",
+                  },
+                  description: "List of terms to avoid",
+                },
+                visualIdentity: {
+                  type: "object",
+                  description: "Visual identity guidelines",
+                  properties: {
+                    primaryColor: {
+                      type: "string",
+                      description: "Primary brand color",
+                    },
+                    secondaryColor: {
+                      type: "string",
+                      description: "Secondary brand color",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        PlanUpdate: {
+          type: "object",
+          properties: {
+            brandId: {
+              type: "string",
+              description: "ID of the associated brand",
+            },
+            title: {
+              type: "string",
+              description: "Title of the plan",
+            },
+            dateRange: {
+              type: "object",
+              description: "Date range for the plan",
+              properties: {
+                start: {
+                  type: "string",
+                  format: "date-time",
+                  description: "Start date",
+                },
+                end: {
+                  type: "string",
+                  format: "date-time",
+                  description: "End date",
+                },
+              },
+            },
+            goals: {
+              type: "array",
+              items: {
+                type: "string",
+                description: "Plan goal",
+              },
+              description: "List of plan goals",
+            },
+            targetAudience: {
+              type: "string",
+              description: "Target audience description",
+            },
+            channels: {
+              type: "array",
+              items: {
+                type: "string",
+                description: "Channel",
+              },
+              description: "List of channels to be used",
+            },
+            userId: {
+              type: "string",
+              description: "ID of the user updating the plan",
+            },
+          },
+        },
+        ContentUpdate: {
+          type: "object",
+          properties: {
+            title: {
+              type: "string",
+              description: "Title of the content",
+            },
+            content: {
+              type: "string",
+              description: "Content body",
+            },
+            scheduledFor: {
+              type: "string",
+              format: "date-time",
+              description: "Scheduled publication date",
+            },
+            userId: {
+              type: "string",
+              description: "ID of the user updating the content",
             },
           },
         },
