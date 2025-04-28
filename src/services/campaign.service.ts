@@ -9,6 +9,34 @@ export interface CampaignCreationData {
   startDate: Date;
   endDate: Date;
   userId?: string;
+  goals?: Array<{
+    type: string;
+    description: string;
+    priority: number;
+    kpis: Array<{
+      metric: string;
+      target: number;
+    }>;
+    completionCriteria?: string;
+  }>;
+  audience?: Array<{
+    segment: string;
+    characteristics: string[];
+    painPoints: string[];
+  }>;
+  contentMix?: Array<{
+    category: string;
+    ratio: number;
+    platforms: Array<{
+      name: string;
+      format: string;
+    }>;
+  }>;
+  majorMilestones?: Array<{
+    date: Date;
+    description: string;
+    status?: 'pending' | 'completed';
+  }>;
 }
 
 export interface StateTransitionMetadata {
@@ -172,5 +200,35 @@ export class CampaignService {
     if (!validTransitions[currentStatus].includes(targetStatus)) {
       throw new Error(`Invalid status transition from ${currentStatus} to ${targetStatus}`);
     }
+  }
+
+  async updateMilestoneStatus(
+    campaignId: string,
+    milestoneIndex: number,
+    status: 'pending' | 'completed',
+    userId: string
+  ): Promise<Campaign | null> {
+    const campaign = await this.getCampaignById(campaignId);
+    if (!campaign || !campaign.majorMilestones || !campaign.majorMilestones[milestoneIndex]) {
+      return null;
+    }
+
+    // Clone the milestones array to avoid direct mutation
+    const majorMilestones = [...campaign.majorMilestones];
+    majorMilestones[milestoneIndex] = {
+      ...majorMilestones[milestoneIndex],
+      status
+    };
+
+    // Update the campaign
+    return await this.updateCampaign(
+      campaignId,
+      { majorMilestones },
+      userId
+    );
+  }
+
+  async getCampaignsWithUpcomingMilestones(daysAhead: number = 7): Promise<Campaign[]> {
+    return await this.campaignRepository.findByUpcomingMilestones(daysAhead);
   }
 }

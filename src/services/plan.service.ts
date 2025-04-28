@@ -12,6 +12,25 @@ export interface MasterPlanCreationData {
   targetAudience: string;
   channels: string[];
   userId: string;
+  planGoals?: Array<{
+    campaignGoalId: string;
+    description: string;
+    metrics: Array<{
+      name: string;
+      target: number;
+    }>;
+  }>;
+  contentStrategy?: {
+    approach: string;
+    keyThemes: string[];
+    distribution: Record<string, number>;
+  };
+  timeline?: Array<{
+    date: Date;
+    description: string;
+    type: string;
+    status?: 'pending' | 'in-progress' | 'completed';
+  }>;
 }
 
 export interface MicroPlanCreationData {
@@ -25,6 +44,17 @@ export interface MicroPlanCreationData {
   targetAudience: string;
   channels: string[];
   userId: string;
+  contentSeries?: {
+    name?: string;
+    description?: string;
+    expectedPieces?: number;
+    theme?: string;
+  };
+  performanceMetrics?: Array<{
+    metricName: string;
+    target: number;
+    actual?: number;
+  }>;
 }
 
 export interface StateTransitionMetadata {
@@ -290,4 +320,60 @@ export class PlanService {
 
     return [...masterPlans, ...microPlans];
   }
+
+  async updateTimelineEventStatus(
+    planId: string,
+    eventIndex: number,
+    status: 'pending' | 'in-progress' | 'completed',
+    userId: string
+  ): Promise<MasterPlan | null> {
+    const plan = await this.getPlan(planId) as MasterPlan;
+    if (!plan || plan.type !== PlanType.Master || !plan.timeline || !plan.timeline[eventIndex]) {
+      return null;
+    }
+
+    // Clone the timeline array to avoid direct mutation
+    const timeline = [...plan.timeline];
+    timeline[eventIndex] = {
+      ...timeline[eventIndex],
+      status
+    };
+
+    // Update the plan - explicitly type as a master plan with timeline field
+    const updates: Partial<Omit<MasterPlan, "_id">> = {
+      timeline
+    };
+
+    return await this.planRepository.update(
+      planId,
+      updates
+    ) as MasterPlan;
+  }
+
+  async updateContentSeries(
+    planId: string,
+    contentSeries: {
+      name?: string;
+      description?: string;
+      expectedPieces?: number;
+      theme?: string;
+    },
+    userId: string
+  ): Promise<MicroPlan | null> {
+    const plan = await this.getPlan(planId) as MicroPlan;
+    if (!plan || plan.type !== PlanType.Micro) {
+      return null;
+    }
+
+    // Update the plan - explicitly type as a micro plan with contentSeries field
+    const updates: Partial<Omit<MicroPlan, "_id">> = {
+      contentSeries
+    };
+
+    return await this.planRepository.update(
+      planId,
+      updates
+    ) as MicroPlan;
+  }
+
 }

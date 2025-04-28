@@ -66,4 +66,57 @@ export class CampaignRepository extends BaseRepository<Campaign> {
       return this.validate(document);
     });
   }
+
+  async findByGoalType(goalType: string): Promise<Campaign[]> {
+    await this.initCollection();
+    const results = await this.collection.find({
+      "goals.type": goalType
+    }).toArray();
+
+    return results.map(result => {
+      const document = {
+        ...result,
+        _id: this.fromObjectId(result._id)
+      };
+      return this.validate(document);
+    });
+  }
+
+  async findByAudienceSegment(segment: string): Promise<Campaign[]> {
+    await this.initCollection();
+    const results = await this.collection.find({
+      "audience.segment": segment
+    }).toArray();
+
+    return results.map(result => {
+      const document = {
+        ...result,
+        _id: this.fromObjectId(result._id)
+      };
+      return this.validate(document);
+    });
+  }
+
+  async findByUpcomingMilestones(daysAhead: number = 7): Promise<Campaign[]> {
+    const future = new Date();
+    future.setDate(future.getDate() + daysAhead);
+
+    await this.initCollection();
+    const results = await this.collection.find({
+      "majorMilestones": {
+        $elemMatch: {
+          date: { $gte: new Date(), $lte: future },
+          status: "pending"
+        }
+      }
+    }).toArray();
+
+    return results.map(result => {
+      const document = {
+        ...result,
+        _id: this.fromObjectId(result._id)
+      };
+      return this.validate(document);
+    });
+  }
 }

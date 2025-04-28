@@ -12,6 +12,14 @@ export interface ContentCreationData {
     userId: string;
     scheduledFor?: Date;
     comments?: string;
+    format?: string;
+    platform?: string;
+    mediaRequirements?: {
+        type: string;
+        description: string;
+    };
+    targetAudience?: string;
+    keywords?: string[];
 }
 
 export interface StateTransitionMetadata {
@@ -281,5 +289,28 @@ export class ContentService {
 
         const contentArrays = await Promise.all(contentPromises);
         return contentArrays.flat();
+    }
+
+    async updatePublishedMetadata(
+        contentId: string,
+        publishedMetadata: {
+            url?: string;
+            postId?: string;
+            platformSpecificData?: Record<string, any>;
+        },
+        userId: string
+    ): Promise<Content | null> {
+        const content = await this.getContent(contentId);
+        if (!content) return null;
+
+        // Update the content
+        return await this.contentRepository.update(contentId, {
+            publishedMetadata,
+            stateMetadata: {
+                ...content.stateMetadata,
+                updatedAt: new Date(),
+                updatedBy: userId
+            }
+        });
     }
 }

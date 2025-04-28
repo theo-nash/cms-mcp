@@ -137,4 +137,60 @@ export class PlanRepository extends BaseRepository<Plan> {
       return this.validate(document);
     }
   }
+
+  async findMasterPlansByContentTheme(theme: string): Promise<MasterPlan[]> {
+    await this.initCollection();
+    const results = await this.collection.find({
+      type: PlanType.Master,
+      "contentStrategy.keyThemes": theme
+    }).toArray();
+
+    return results.map(result => {
+      const document = {
+        ...result,
+        _id: this.fromObjectId(result._id)
+      };
+      return MasterPlanSchema.parse(document) as MasterPlan;
+    });
+  }
+
+  async findMicroPlansByContentSeries(seriesName: string): Promise<MicroPlan[]> {
+    await this.initCollection();
+    const results = await this.collection.find({
+      type: PlanType.Micro,
+      "contentSeries.name": seriesName
+    }).toArray();
+
+    return results.map(result => {
+      const document = {
+        ...result,
+        _id: this.fromObjectId(result._id)
+      };
+      return MicroPlanSchema.parse(document) as MicroPlan;
+    });
+  }
+
+  async findPlansWithUpcomingTimelineEvents(daysAhead: number = 7): Promise<Plan[]> {
+    const future = new Date();
+    future.setDate(future.getDate() + daysAhead);
+
+    await this.initCollection();
+    const results = await this.collection.find({
+      type: PlanType.Master,
+      "timeline": {
+        $elemMatch: {
+          date: { $gte: new Date(), $lte: future },
+          status: { $ne: "completed" }
+        }
+      }
+    }).toArray();
+
+    return results.map(result => {
+      const document = {
+        ...result,
+        _id: this.fromObjectId(result._id)
+      };
+      return this.validate(document);
+    });
+  }
 }

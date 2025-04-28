@@ -1,5 +1,9 @@
 import { BaseRepository } from "./base.repository.js";
 import { Content, ContentSchema, ContentState } from "../models/content.model.js";
+import { MicroPlan, MicroPlanSchema, Plan } from "../models/plan.model.js";
+import { PlanType } from "../models/plan.model.js";
+import { MasterPlanSchema } from "../models/plan.model.js";
+import { MasterPlan } from "../models/plan.model.js";
 
 export class ContentRepository extends BaseRepository<Content> {
     constructor() {

@@ -128,7 +128,6 @@ const getPlanByIdHandler: RequestHandler = async (req, res, next) => {
  *           schema:
  *             type: object
  *             required:
- *               - brandId
  *               - title
  *               - type
  *               - dateRange
@@ -137,9 +136,6 @@ const getPlanByIdHandler: RequestHandler = async (req, res, next) => {
  *               - channels
  *               - userId
  *             properties:
- *               brandId:
- *                 type: string
- *                 description: ID of the associated brand
  *               title:
  *                 type: string
  *                 description: Title of the plan
@@ -147,12 +143,12 @@ const getPlanByIdHandler: RequestHandler = async (req, res, next) => {
  *                 type: string
  *                 enum: [master, micro]
  *                 description: Type of the plan
- *               parentPlanId:
- *                 type: string
- *                 description: ID of the parent plan (for micro plans)
  *               campaignId:
  *                 type: string
- *                 description: ID of the associated campaign
+ *                 description: ID of the associated campaign (required for master plans)
+ *               masterPlanId:
+ *                 type: string
+ *                 description: ID of the parent master plan (required for micro plans)
  *               dateRange:
  *                 type: object
  *                 description: Date range for the plan
@@ -181,6 +177,74 @@ const getPlanByIdHandler: RequestHandler = async (req, res, next) => {
  *               userId:
  *                 type: string
  *                 description: ID of the user creating the plan
+ *               planGoals:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     campaignGoalId:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     metrics:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                           target:
+ *                             type: number
+ *               contentStrategy:
+ *                 type: object
+ *                 properties:
+ *                   approach:
+ *                     type: string
+ *                   keyThemes:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                   distribution:
+ *                     type: object
+ *                     additionalProperties:
+ *                       type: number
+ *               timeline:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     date:
+ *                       type: string
+ *                       format: date-time
+ *                     description:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       enum: [pending, in-progress, completed]
+ *               contentSeries:
+ *                 type: object
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                   description:
+ *                     type: string
+ *                   expectedPieces:
+ *                     type: number
+ *                   theme:
+ *                     type: string
+ *               performanceMetrics:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     metricName:
+ *                       type: string
+ *                     target:
+ *                       type: number
+ *                     actual:
+ *                       type: number
  *     responses:
  *       201:
  *         description: Plan created successfully
@@ -209,7 +273,10 @@ const createPlanHandler: RequestHandler = async (req, res, next) => {
         goals: req.body.goals || [],
         targetAudience: req.body.targetAudience,
         channels: req.body.channels || [],
-        userId: req.body.userId || "default-user-id"
+        userId: req.body.userId || "default-user-id",
+        planGoals: req.body.planGoals,
+        contentStrategy: req.body.contentStrategy,
+        timeline: req.body.timeline
       };
 
       const plan = await planService.createMasterPlan(masterPlanData);
@@ -217,7 +284,7 @@ const createPlanHandler: RequestHandler = async (req, res, next) => {
     } else if (type === PlanType.Micro) {
       // Create properly typed micro plan data
       const microPlanData: MicroPlanCreationData = {
-        masterPlanId: req.body.masterPlanId, // Fix: Use masterPlanId instead of parentPlanId
+        masterPlanId: req.body.masterPlanId,
         title: req.body.title,
         dateRange: {
           start: new Date(req.body.dateRange.start),
@@ -226,7 +293,9 @@ const createPlanHandler: RequestHandler = async (req, res, next) => {
         goals: req.body.goals || [],
         targetAudience: req.body.targetAudience,
         channels: req.body.channels || [],
-        userId: req.body.userId || "default-user-id"
+        userId: req.body.userId || "default-user-id",
+        contentSeries: req.body.contentSeries,
+        performanceMetrics: req.body.performanceMetrics
       };
 
       const plan = await planService.createMicroPlan(microPlanData);
@@ -260,9 +329,6 @@ const createPlanHandler: RequestHandler = async (req, res, next) => {
  *           schema:
  *             type: object
  *             properties:
- *               brandId:
- *                 type: string
- *                 description: ID of the associated brand
  *               title:
  *                 type: string
  *                 description: Title of the plan
@@ -291,9 +357,87 @@ const createPlanHandler: RequestHandler = async (req, res, next) => {
  *                 items:
  *                   type: string
  *                 description: List of channels to be used
+ *               state:
+ *                 type: string
+ *                 enum: [draft, review, approved, active]
+ *                 description: Plan state
+ *               isActive:
+ *                 type: boolean
+ *                 description: Whether the plan is active
  *               userId:
  *                 type: string
  *                 description: ID of the user updating the plan
+ *               comments:
+ *                 type: string
+ *                 description: Comments about the update
+ *               planGoals:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     campaignGoalId:
+ *                       type: string
+ *                     description:
+ *                       type: string
+ *                     metrics:
+ *                       type: array
+ *                       items:
+ *                         type: object
+ *                         properties:
+ *                           name:
+ *                             type: string
+ *                           target:
+ *                             type: number
+ *               contentStrategy:
+ *                 type: object
+ *                 properties:
+ *                   approach:
+ *                     type: string
+ *                   keyThemes:
+ *                     type: array
+ *                     items:
+ *                       type: string
+ *                   distribution:
+ *                     type: object
+ *                     additionalProperties:
+ *                       type: number
+ *               timeline:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     date:
+ *                       type: string
+ *                       format: date-time
+ *                     description:
+ *                       type: string
+ *                     type:
+ *                       type: string
+ *                     status:
+ *                       type: string
+ *                       enum: [pending, in-progress, completed]
+ *               contentSeries:
+ *                 type: object
+ *                 properties:
+ *                   name:
+ *                     type: string
+ *                   description:
+ *                     type: string
+ *                   expectedPieces:
+ *                     type: number
+ *                   theme:
+ *                     type: string
+ *               performanceMetrics:
+ *                 type: array
+ *                 items:
+ *                   type: object
+ *                   properties:
+ *                     metricName:
+ *                       type: string
+ *                     target:
+ *                       type: number
+ *                     actual:
+ *                       type: number
  *     responses:
  *       200:
  *         description: Plan updated successfully
@@ -301,42 +445,68 @@ const createPlanHandler: RequestHandler = async (req, res, next) => {
  *           application/json:
  *             schema:
  *               $ref: '#/components/schemas/Plan'
- *       400:
- *         description: Invalid input data
  *       404:
  *         description: Plan not found
+ *       400:
+ *         description: Invalid input data
  *       500:
  *         description: Internal server error
  */
 const updatePlanHandler: RequestHandler = async (req, res, next) => {
   try {
-    // Create a sanitized update object
+    // Get the existing plan to determine its type
+    const existingPlan = await planService.getPlan(req.params.id);
+    if (!existingPlan) {
+      void res.status(404).json({ message: "Plan not found" });
+      return;
+    }
+
+    // Create update object with common fields
     const updates: Partial<Omit<Plan, "_id">> = {};
 
+    // Common fields for both plan types
     if (req.body.title !== undefined) updates.title = req.body.title;
-
-    if (req.body.dateRange) {
+    if (req.body.dateRange !== undefined) {
       updates.dateRange = {
         start: new Date(req.body.dateRange.start),
         end: new Date(req.body.dateRange.end)
       };
     }
-
     if (req.body.goals !== undefined) updates.goals = req.body.goals;
     if (req.body.targetAudience !== undefined) updates.targetAudience = req.body.targetAudience;
     if (req.body.channels !== undefined) updates.channels = req.body.channels;
+    if (req.body.state !== undefined) updates.state = req.body.state as PlanState;
+    if (req.body.isActive !== undefined) updates.isActive = req.body.isActive;
 
-    const plan = await planService.updatePlan(
+    // Type-specific fields
+    if (existingPlan.type === PlanType.Master) {
+      // Create a master plan specific update object
+      const masterUpdates = updates as Partial<Omit<MasterPlan, "_id">>;
+
+      if (req.body.planGoals !== undefined) masterUpdates.planGoals = req.body.planGoals;
+      if (req.body.contentStrategy !== undefined) masterUpdates.contentStrategy = req.body.contentStrategy;
+      if (req.body.timeline !== undefined) masterUpdates.timeline = req.body.timeline;
+    } else if (existingPlan.type === PlanType.Micro) {
+      // Create a micro plan specific update object
+      const microUpdates = updates as Partial<Omit<MicroPlan, "_id">>;
+
+      if (req.body.contentSeries !== undefined) microUpdates.contentSeries = req.body.contentSeries;
+      if (req.body.performanceMetrics !== undefined) microUpdates.performanceMetrics = req.body.performanceMetrics;
+    }
+
+    // Update the plan
+    const updatedPlan = await planService.updatePlan(
       req.params.id,
       updates,
       req.body.userId || "default-user-id"
     );
 
-    if (!plan) {
+    if (!updatedPlan) {
       void res.status(404).json({ message: "Plan not found" });
       return;
     }
-    void res.json(plan);
+
+    void res.json(updatedPlan);
   } catch (error) {
     next(error);
   }
@@ -530,64 +700,122 @@ router.get("/:id", [
 ], validateRequest, getPlanByIdHandler);
 
 router.post("/", [
-  // Transform nested date fields
-  transformDates(["dateRange.start", "dateRange.end"]),
-  // Transform field names to match service interfaces
-  transformCasing({
-    "parent_plan_id": "masterPlanId",
-    "date_range": "dateRange",
-    "target_audience": "targetAudience"
-  }),
-  // Sanitize body to only include expected fields
-  sanitizeBody([
-    "title", "type", "campaignId", "masterPlanId", "dateRange",
-    "dateRange.start", "dateRange.end", "goals", "targetAudience",
-    "channels", "userId"
+  transformDates([
+    "dateRange.start", "dateRange.end",
+    "timeline[].date"
   ]),
-  body("title").isString(),
+  sanitizeBody([
+    "title", "type", "campaignId", "masterPlanId",
+    "dateRange", "dateRange.start", "dateRange.end",
+    "goals", "targetAudience", "channels", "userId",
+    "planGoals", "planGoals[].campaignGoalId", "planGoals[].description",
+    "planGoals[].metrics", "planGoals[].metrics[].name", "planGoals[].metrics[].target",
+    "contentStrategy", "contentStrategy.approach", "contentStrategy.keyThemes", "contentStrategy.distribution",
+    "timeline", "timeline[].date", "timeline[].description", "timeline[].type", "timeline[].status",
+    "contentSeries", "contentSeries.name", "contentSeries.description", "contentSeries.expectedPieces", "contentSeries.theme",
+    "performanceMetrics", "performanceMetrics[].metricName", "performanceMetrics[].target", "performanceMetrics[].actual"
+  ]),
+  body("title").isString().notEmpty(),
   body("type").isIn(Object.values(PlanType)),
-  body("parentPlanId").optional().isString(),
-  body("campaignId").optional().isString(),
   body("dateRange").isObject(),
   body("dateRange.start").isISO8601(),
   body("dateRange.end").isISO8601(),
   body("goals").isArray(),
+  body("goals.*").isString(),
   body("targetAudience").isString(),
   body("channels").isArray(),
-  body("userId").optional().isString(),
-  // Conditionally require campaignId for master plans
-  body("campaignId").custom((value, { req }) => {
-    if (req.body.type === PlanType.Master && !value) {
-      throw new Error("campaignId is required for master plans");
-    }
-    return true;
-  }),
-  // Conditionally require masterPlanId for micro plans
-  body("masterPlanId").custom((value, { req }) => {
-    if (req.body.type === PlanType.Micro && !value) {
-      throw new Error("masterPlanId is required for micro plans");
-    }
-    return true;
-  }),
+  body("channels.*").isString(),
+  body("userId").isString(),
+  // Conditional validation based on plan type
+  body("campaignId").if(body("type").equals(PlanType.Master)).isString().notEmpty()
+    .withMessage("campaignId is required for master plans"),
+  body("masterPlanId").if(body("type").equals(PlanType.Micro)).isString().notEmpty()
+    .withMessage("masterPlanId is required for micro plans"),
+  // Optional fields for master plans
+  body("planGoals").optional().isArray(),
+  body("planGoals.*.campaignGoalId").optional().isString(),
+  body("planGoals.*.description").optional().isString(),
+  body("planGoals.*.metrics").optional().isArray(),
+  body("planGoals.*.metrics.*.name").optional().isString(),
+  body("planGoals.*.metrics.*.target").optional().isNumeric(),
+  body("contentStrategy").optional().isObject(),
+  body("contentStrategy.approach").optional().isString(),
+  body("contentStrategy.keyThemes").optional().isArray(),
+  body("contentStrategy.keyThemes.*").optional().isString(),
+  body("contentStrategy.distribution").optional().isObject(),
+  body("timeline").optional().isArray(),
+  body("timeline.*.date").optional().isISO8601(),
+  body("timeline.*.description").optional().isString(),
+  body("timeline.*.type").optional().isString(),
+  body("timeline.*.status").optional().isIn(["pending", "in-progress", "completed"]),
+  // Optional fields for micro plans
+  body("contentSeries").optional().isObject(),
+  body("contentSeries.name").optional().isString(),
+  body("contentSeries.description").optional().isString(),
+  body("contentSeries.expectedPieces").optional().isNumeric(),
+  body("contentSeries.theme").optional().isString(),
+  body("performanceMetrics").optional().isArray(),
+  body("performanceMetrics.*.metricName").optional().isString(),
+  body("performanceMetrics.*.target").optional().isNumeric(),
+  body("performanceMetrics.*.actual").optional().isNumeric()
 ], validateRequest, createPlanHandler);
 
 router.put("/:id", [
-  transformDates(["dateRange.start", "dateRange.end"]),
-  transformCasing({
-    "date_range": "dateRange",
-    "target_audience": "targetAudience"
-  }),
+  transformDates([
+    "dateRange.start", "dateRange.end",
+    "timeline[].date"
+  ]),
   sanitizeBody([
     "title", "dateRange", "dateRange.start", "dateRange.end",
-    "goals", "targetAudience", "channels", "userId"
+    "goals", "targetAudience", "channels", "state", "isActive", "userId", "comments",
+    "planGoals", "planGoals[].campaignGoalId", "planGoals[].description",
+    "planGoals[].metrics", "planGoals[].metrics[].name", "planGoals[].metrics[].target",
+    "contentStrategy", "contentStrategy.approach", "contentStrategy.keyThemes", "contentStrategy.distribution",
+    "timeline", "timeline[].date", "timeline[].description", "timeline[].type", "timeline[].status",
+    "contentSeries", "contentSeries.name", "contentSeries.description", "contentSeries.expectedPieces", "contentSeries.theme",
+    "performanceMetrics", "performanceMetrics[].metricName", "performanceMetrics[].target", "performanceMetrics[].actual"
   ]),
   param("id").isString(),
   body("title").optional().isString(),
   body("dateRange").optional().isObject(),
+  body("dateRange.start").optional().isISO8601(),
+  body("dateRange.end").optional().isISO8601(),
   body("goals").optional().isArray(),
+  body("goals.*").optional().isString(),
   body("targetAudience").optional().isString(),
   body("channels").optional().isArray(),
+  body("channels.*").optional().isString(),
+  body("state").optional().isIn(Object.values(PlanState)),
+  body("isActive").optional().isBoolean(),
   body("userId").optional().isString(),
+  body("comments").optional().isString(),
+  // Optional fields for master plans
+  body("planGoals").optional().isArray(),
+  body("planGoals.*.campaignGoalId").optional().isString(),
+  body("planGoals.*.description").optional().isString(),
+  body("planGoals.*.metrics").optional().isArray(),
+  body("planGoals.*.metrics.*.name").optional().isString(),
+  body("planGoals.*.metrics.*.target").optional().isNumeric(),
+  body("contentStrategy").optional().isObject(),
+  body("contentStrategy.approach").optional().isString(),
+  body("contentStrategy.keyThemes").optional().isArray(),
+  body("contentStrategy.keyThemes.*").optional().isString(),
+  body("contentStrategy.distribution").optional().isObject(),
+  body("timeline").optional().isArray(),
+  body("timeline.*.date").optional().isISO8601(),
+  body("timeline.*.description").optional().isString(),
+  body("timeline.*.type").optional().isString(),
+  body("timeline.*.status").optional().isIn(["pending", "in-progress", "completed"]),
+  // Optional fields for micro plans
+  body("contentSeries").optional().isObject(),
+  body("contentSeries.name").optional().isString(),
+  body("contentSeries.description").optional().isString(),
+  body("contentSeries.expectedPieces").optional().isNumeric(),
+  body("contentSeries.theme").optional().isString(),
+  body("performanceMetrics").optional().isArray(),
+  body("performanceMetrics.*.metricName").optional().isString(),
+  body("performanceMetrics.*.target").optional().isNumeric(),
+  body("performanceMetrics.*.actual").optional().isNumeric()
 ], validateRequest, updatePlanHandler);
 
 router.put("/:id/state", [

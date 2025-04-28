@@ -211,6 +211,30 @@ router.get(
  *               userId:
  *                 type: string
  *                 description: ID of the user creating the content
+ *               format:
+ *                 type: string
+ *                 description: Content format
+ *               platform:
+ *                 type: string
+ *                 description: Platform for the content
+ *               mediaRequirements:
+ *                 type: object
+ *                 properties:
+ *                   type:
+ *                     type: string
+ *                   description:
+ *                     type: string
+ *               targetAudience:
+ *                 type: string
+ *                 description: Target audience for the content
+ *               keywords:
+ *                 type: array
+ *                 items:
+ *                   type: string
+ *                 description: Keywords for the content
+ *               comments:
+ *                 type: string
+ *                 description: Comments about the content
  *     responses:
  *       201:
  *         description: Content created successfully
@@ -229,13 +253,25 @@ router.post(
     transformDates(["scheduledFor"]),
     sanitizeBody([
       "microPlanId", "title", "content",
-      "scheduledFor", "userId"
+      "scheduledFor", "userId", "comments",
+      "format", "platform", "mediaRequirements",
+      "targetAudience", "keywords",
+      "mediaRequirements.type", "mediaRequirements.description"
     ]),
     body("microPlanId").isString().notEmpty(),
     body("title").isString().notEmpty(),
     body("content").isString().notEmpty(),
     body("scheduledFor").optional().isISO8601(),
     body("userId").optional().isString(),
+    body("format").optional().isString(),
+    body("platform").optional().isString(),
+    body("mediaRequirements").optional().isObject(),
+    body("mediaRequirements.type").optional().isString(),
+    body("mediaRequirements.description").optional().isString(),
+    body("targetAudience").optional().isString(),
+    body("keywords").optional().isArray(),
+    body("keywords.*").optional().isString(),
+    body("comments").optional().isString()
   ],
   validateRequest,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -246,12 +282,16 @@ router.post(
         title: req.body.title,
         content: req.body.content,
         scheduledFor: req.body.scheduledFor ? new Date(req.body.scheduledFor) : undefined,
-        userId: req.body.userId || "default-user-id"
+        userId: req.body.userId || "default-user-id",
+        comments: req.body.comments,
+        format: req.body.format,
+        platform: req.body.platform,
+        mediaRequirements: req.body.mediaRequirements,
+        targetAudience: req.body.targetAudience,
+        keywords: req.body.keywords
       };
 
       const content = await contentService.createContent(contentData);
-
-      // Return the created content (if scheduling wasn't applied)
       res.status(201).json(content);
     } catch (error) {
       next(error);

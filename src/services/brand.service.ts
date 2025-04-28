@@ -4,7 +4,24 @@ import { BrandRepository } from "../repositories/brand.repository.js";
 export interface BrandCreationData {
     name: string;
     description: string;
-    guidelines?: BrandGuidelines;
+    guidelines?: {
+        tone: string[];
+        vocabulary: string[];
+        avoidedTerms: string[];
+        visualIdentity?: {
+            primaryColor?: string;
+            secondaryColor?: string;
+        };
+        narratives?: {
+            elevatorPitch?: string;
+            shortNarrative?: string;
+            fullNarrative?: string;
+        };
+        keyMessages?: Array<{
+            audienceSegment: string;
+            message: string;
+        }>;
+    };
 }
 
 export class BrandService {
@@ -55,4 +72,30 @@ export class BrandService {
     async updateBrandGuidelines(brandId: string, guidelines: BrandGuidelines): Promise<Brand | null> {
         return await this.brandRepository.update(brandId, { guidelines });
     }
+
+    async addBrandKeyMessage(
+        brandId: string,
+        audienceSegment: string,
+        message: string
+    ): Promise<Brand | null> {
+        const brand = await this.getBrand(brandId);
+        if (!brand) return null;
+
+        // Create or update guidelines
+        const guidelines = brand.guidelines || {
+            tone: [],
+            vocabulary: [],
+            avoidedTerms: [],
+        };
+
+        // Create or update key messages
+        const keyMessages = guidelines.keyMessages || [];
+        keyMessages.push({ audienceSegment, message });
+
+        guidelines.keyMessages = keyMessages;
+
+        // Update the brand
+        return await this.brandRepository.update(brandId, { guidelines });
+    }
+
 }
