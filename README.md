@@ -54,27 +54,79 @@ TWITTER_PASSWORD=your_password
 TWITTER_EMAIL=your_email
 ```
 
-## Development
+## Running the System
 
-To run the application in development mode:
+There are multiple ways to run the CMS-MCP system depending on your needs:
+
+### Complete System with Docker
+
+To run the entire application (API server, scheduler, and MongoDB) in development mode:
 
 ```bash
 docker-compose -f docker-compose-dev.yml up --build
 ```
 
-This will:
-- Start MongoDB in a container
-- Mount the source code for live development
-- Start the application with hot-reloading
-- Expose the API on port 3000
-
-## Production
-
-To run the application in production mode:
+For production:
 
 ```bash
 docker-compose up --build
 ```
+
+This will:
+- Start MongoDB in a container
+- Start the API server (main entry point in `src/index.ts`)
+- Start the scheduler service
+- Expose the API on port 3000
+
+### Run API Server Only
+
+If you already have MongoDB running, you can start just the API server:
+
+```bash
+npm run build
+npm start
+```
+
+This executes the main entry point (`src/index.ts`), which starts the API server and scheduler.
+
+### Run MCP Server Using Claude Desktop
+
+The MCP server can now be run directly from Claude Desktop:
+
+1. Make sure the main Docker container with MongoDB is already running:
+```bash
+docker-compose up
+```
+
+2. Create a `.env.mcp` file in the project root (optional, will fall back to `.env` if not found):
+```env
+MONGODB_URI=mongodb://localhost:27017/cms-mcp
+NODE_ENV=development
+TWITTER_USERNAME=your_username
+TWITTER_PASSWORD=your_password
+TWITTER_EMAIL=your_email
+```
+
+3. Run the MCP server script from Claude Desktop:
+```bash
+npm run build
+node dist/mcp/index.js
+```
+
+The MCP server (`src/mcp/index.ts`) connects to the same MongoDB instance but runs independently from the API server.
+
+### Run MCP Server In Docker (Standalone)
+
+You can also run the MCP server in its own Docker container:
+
+```bash
+cd src/mcp
+docker-compose -f docker-compose.mcp.yml up --build
+```
+
+Note: This setup requires MongoDB. You can either:
+- Use the MongoDB from the main docker-compose setup
+- Uncomment the MongoDB service in `docker-compose.mcp.yml` to run it alongside the MCP server
 
 ## API Documentation
 
