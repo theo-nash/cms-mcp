@@ -6,7 +6,8 @@ import { CampaignRepository } from "../repositories/campaign.repository.js";
 import { PlanType, MicroPlan, MasterPlan } from "../models/plan.model.js";
 
 export interface ContentCreationData {
-    microPlanId: string;
+    microPlanId?: string;
+    brandId?: string;
     title: string;
     content: string;
     userId: string;
@@ -55,17 +56,38 @@ export class ContentService {
     }
 
     /**
+     * Get content by brand ID (for standalone content)
+     */
+    async getContentByBrandId(brandId: string): Promise<Content[]> {
+        return await this.contentRepository.findByBrandId(brandId);
+    }
+
+    /**
      * Create new content
      */
     async createContent(data: ContentCreationData): Promise<Content> {
-        // Verify micro plan exists
-
         // Add default user id if not provided
         data.userId = data.userId || "default-user-id";
 
-        const microPlan = await this.planRepository.findById(data.microPlanId);
-        if (!microPlan || microPlan.type !== PlanType.Micro) {
-            throw new Error(`Micro plan with ID ${data.microPlanId} not found`);
+        // Validate that either microPlanId or brandId is provided
+        if (!data.microPlanId && !data.brandId) {
+            throw new Error("Either microPlanId or brandId must be provided");
+        }
+
+        // If microPlanId is provided, verify it exists
+        if (data.microPlanId) {
+            const microPlan = await this.planRepository.findById(data.microPlanId);
+            if (!microPlan || microPlan.type !== PlanType.Micro) {
+                throw new Error(`Micro plan with ID ${data.microPlanId} not found`);
+            }
+        }
+
+        // If brandId is provided, verify it exists
+        if (data.brandId) {
+            const brand = await this.brandRepository.findById(data.brandId);
+            if (!brand) {
+                throw new Error(`Brand with ID ${data.brandId} not found`);
+            }
         }
 
         // Create state metadata
@@ -78,10 +100,16 @@ export class ContentService {
 
         // Create the content with initial state
         return await this.contentRepository.create({
-            microPlanId: data.microPlanId,
+            microPlanId: data.microPlanId || "",
+            brandId: data.brandId || "",
             title: data.title,
             content: data.content,
             state: ContentState.Draft,
+            format: data.format,
+            platform: data.platform,
+            mediaRequirements: data.mediaRequirements,
+            targetAudience: data.targetAudience,
+            keywords: data.keywords,
             stateMetadata
         });
     }
@@ -221,26 +249,37 @@ export class ContentService {
      * Validate content against brand guidelines
      */
     private async validateAgainstBrandGuidelines(content: Content): Promise<void> {
-        // Get the micro plan
-        const microPlan = await this.planRepository.findById(content.microPlanId) as MicroPlan;
-        if (!microPlan || microPlan.type !== PlanType.Micro) {
-            throw new Error(`Micro plan with ID ${content.microPlanId} not found`);
-        }
+        let brandId: string | null = null;
 
-        // Get the master plan
-        const masterPlan = await this.planRepository.findById(microPlan.masterPlanId) as MasterPlan;
-        if (!masterPlan || masterPlan.type !== PlanType.Master) {
-            throw new Error(`Master plan with ID ${microPlan.masterPlanId} not found`);
-        }
+        if (content.microPlanId) {
+            // Get the micro plan
+            const microPlan = await this.planRepository.findById(content.microPlanId) as MicroPlan;
+            if (!microPlan || microPlan.type !== PlanType.Micro) {
+                throw new Error(`Micro plan with ID ${content.microPlanId} not found`);
+            }
 
-        // Get the campaign
-        const campaign = await this.campaignRepository.findById(masterPlan.campaignId);
-        if (!campaign) {
-            throw new Error(`Campaign with ID ${masterPlan.campaignId} not found`);
+            // Get the master plan
+            const masterPlan = await this.planRepository.findById(microPlan.masterPlanId) as MasterPlan;
+            if (!masterPlan || masterPlan.type !== PlanType.Master) {
+                throw new Error(`Master plan with ID ${microPlan.masterPlanId} not found`);
+            }
+
+            // Get the campaign
+            const campaign = await this.campaignRepository.findById(masterPlan.campaignId);
+            if (!campaign) {
+                throw new Error(`Campaign with ID ${masterPlan.campaignId} not found`);
+            }
+
+            brandId = campaign.brandId;
+        } else if (content.brandId) {
+            // For standalone content
+            brandId = content.brandId;
+        } else {
+            throw new Error('Content must be associated with either a microplan or a brand');
         }
 
         // Get brand guidelines
-        const brand = await this.brandRepository.findById(campaign.brandId);
+        const brand = await this.brandRepository.findById(brandId);
         if (!brand || !brand.guidelines) {
             // No guidelines to validate against
             return;

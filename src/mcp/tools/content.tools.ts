@@ -2,23 +2,42 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { ContentService } from "../../services/content.service.js";
 import { ContentState } from "../../models/content.model.js";
+import { BrandService } from "../../services/brand.service.js";
 
 export function registerContentTools(server: McpServer) {
     const contentService = new ContentService();
+    const brandService = new BrandService();
 
     // Create content
     server.tool(
         "createContent",
-        "Create a new content item for a specific micro plan. Use this to draft articles, posts, or other content pieces.",
+        "Create a new content item. Can be associated with either a micro plan or directly with a brand.",
         {
-            micro_plan_id: z.string(),
+            micro_plan_id: z.string().optional(),
+            brandName: z.string().optional(),
             title: z.string(),
             content: z.string(),
             user_id: z.string()
         },
         async (params) => {
+            // Validate that either micro_plan_id or brand_id is provided
+            if (!params.micro_plan_id && !params.brandName) {
+                throw new Error("Either micro_plan_id or brandName must be provided");
+            }
+
+            let brandId: string | undefined = undefined;
+
+            if (params.brandName) {
+                const brand = await brandService.getBrandByName(params.brandName || "");
+                if (!brand) {
+                    throw new Error(`Brand with name ${params.brandName} not found`);
+                }
+                brandId = brand._id!;
+            }
+
             const result = await contentService.createContent({
                 microPlanId: params.micro_plan_id,
+                brandId: brandId,
                 title: params.title,
                 content: params.content,
                 userId: params.user_id

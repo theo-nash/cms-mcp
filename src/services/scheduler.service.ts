@@ -102,7 +102,7 @@ export class SchedulerService {
                     }
 
                     // Publish to Twitter
-                    const result = await this.twitterService.publishContent(content, brand);
+                    const result = await this.twitterService.publishContent(content, brand._id!);
 
                     // Update content status
                     content.state = ContentState.Published;

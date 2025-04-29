@@ -22,6 +22,11 @@ const contentService = new ContentService();
  *           type: string
  *         description: Filter content by micro plan ID
  *       - in: query
+ *         name: brandId
+ *         schema:
+ *           type: string
+ *         description: Filter content by brand ID
+ *       - in: query
  *         name: state
  *         schema:
  *           type: string
@@ -53,6 +58,7 @@ router.get(
   "/",
   [
     query("microPlanId").optional().isString(),
+    query("brandId").optional().isString(),
     query("state").optional().isIn(Object.values(ContentState)),
     query("masterPlanId").optional().isString(),
     query("campaignId").optional().isString(),
@@ -60,7 +66,7 @@ router.get(
   validateRequest,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const { microPlanId, state, masterPlanId, campaignId } = req.query;
+      const { microPlanId, brandId, state, masterPlanId, campaignId } = req.query;
       let content: Content[];
 
       // Push filtering to the repository/database level when possible
@@ -70,6 +76,8 @@ router.get(
         content = await contentService.getContentByMasterPlanId(masterPlanId as string);
       } else if (microPlanId) {
         content = await contentService.getContentByMicroPlanId(microPlanId as string);
+      } else if (brandId) {
+        content = await contentService.getContentByBrandId(brandId as string);
       } else {
         // For state filtering, we should ideally add a repository method
         // that filters at the database level, but for now we'll keep the app-level filter
@@ -190,14 +198,16 @@ router.get(
  *           schema:
  *             type: object
  *             required:
- *               - microPlanId
  *               - title
  *               - content
  *               - userId
  *             properties:
  *               microPlanId:
  *                 type: string
- *                 description: ID of the associated micro plan
+ *                 description: ID of the associated micro plan (required if brandId not provided)
+ *               brandId:
+ *                 type: string
+ *                 description: ID of the associated brand (required if microPlanId not provided)
  *               title:
  *                 type: string
  *                 description: Title of the content
@@ -252,13 +262,14 @@ router.post(
   [
     transformDates(["scheduledFor"]),
     sanitizeBody([
-      "microPlanId", "title", "content",
+      "microPlanId", "brandId", "title", "content",
       "scheduledFor", "userId", "comments",
       "format", "platform", "mediaRequirements",
       "targetAudience", "keywords",
       "mediaRequirements.type", "mediaRequirements.description"
     ]),
-    body("microPlanId").isString().notEmpty(),
+    body("microPlanId").optional().isString(),
+    body("brandId").optional().isString(),
     body("title").isString().notEmpty(),
     body("content").isString().notEmpty(),
     body("scheduledFor").optional().isISO8601(),
@@ -271,7 +282,14 @@ router.post(
     body("targetAudience").optional().isString(),
     body("keywords").optional().isArray(),
     body("keywords.*").optional().isString(),
-    body("comments").optional().isString()
+    body("comments").optional().isString(),
+    // Validate that either microPlanId or brandId is provided
+    body().custom(value => {
+      if (!value.microPlanId && !value.brandId) {
+        throw new Error('Either microPlanId or brandId must be provided');
+      }
+      return true;
+    })
   ],
   validateRequest,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
@@ -279,6 +297,7 @@ router.post(
       // Create properly typed content creation data
       const contentData: ContentCreationData = {
         microPlanId: req.body.microPlanId,
+        brandId: req.body.brandId,
         title: req.body.title,
         content: req.body.content,
         scheduledFor: req.body.scheduledFor ? new Date(req.body.scheduledFor) : undefined,
@@ -643,6 +662,42 @@ router.get(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       const content = await contentService.getContentByCampaignId(req.params.campaignId);
+      res.json(content);
+    } catch (error) {
+      next(error);
+    }
+  }
+);
+
+/**
+ * @swagger
+ * /api/v1/content/brand/{brandId}:
+ *   get:
+ *     summary: Get content by brand ID
+ *     tags: [Content]
+ *     parameters:
+ *       - in: path
+ *         name: brandId
+ *         required: true
+ *         schema:
+ *           type: string
+ *     responses:
+ *       200:
+ *         description: List of content for the brand
+ *         content:
+ *           application/json:
+ *             schema:
+ *               type: array
+ *               items:
+ *                 $ref: '#/components/schemas/Content'
+ */
+router.get(
+  "/brand/:brandId",
+  param("brandId").isString(),
+  validateRequest,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const content = await contentService.getContentByBrandId(req.params.brandId);
       res.json(content);
     } catch (error) {
       next(error);

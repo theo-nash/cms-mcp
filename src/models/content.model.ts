@@ -10,7 +10,8 @@ export enum ContentState {
 // Content schema
 export const ContentSchema = z.object({
     _id: z.string().optional(),
-    microPlanId: z.string(), // Only reference micro plans
+    microPlanId: z.string().optional().default(""), // Make optional with default empty string
+    brandId: z.string().optional().default(""), // Add brandId for standalone content
     title: z.string(),
     content: z.string(),
     state: z.nativeEnum(ContentState).default(ContentState.Draft),
@@ -38,7 +39,13 @@ export const ContentSchema = z.object({
     }),
     created_at: z.date().default(() => new Date()),
     updated_at: z.date().default(() => new Date())
-});
+}).refine(
+    data => data.microPlanId !== "" || data.brandId !== "",
+    {
+        message: "Content must be associated with either a microPlan or a brand",
+        path: ["microPlanId", "brandId"]
+    }
+);
 
 // Export type
 export type Content = z.infer<typeof ContentSchema>;

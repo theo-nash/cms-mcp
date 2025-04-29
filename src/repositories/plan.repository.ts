@@ -31,6 +31,43 @@ export class PlanRepository extends BaseRepository<Plan> {
     });
   }
 
+  async update(id: string, updates: Partial<Omit<Plan, "_id">>): Promise<Plan | null> {
+    await this.initCollection();
+
+    // First get the existing plan
+    const existingPlan = await this.findById(id);
+    if (!existingPlan) return null;
+
+    // Create updated plan by merging
+    const planToUpdate = {
+      ...existingPlan,
+      ...updates,
+      updated_at: new Date()
+    };
+
+    // Remove _id for update operation
+    const { _id, ...updateData } = planToUpdate as any;
+
+    // Validate with the correct schema based on type
+    let validatedData;
+
+    if (planToUpdate.type === PlanType.Master) {
+      validatedData = MasterPlanSchema.parse(planToUpdate);
+    } else if (planToUpdate.type === PlanType.Micro) {
+      validatedData = MicroPlanSchema.parse(planToUpdate);
+    } else {
+      validatedData = this.validate(planToUpdate);
+    }
+
+    // Perform the update
+    await this.collection.updateOne(
+      { _id: this.toObjectId(id) },
+      { $set: updateData }
+    );
+
+    return validatedData;
+  }
+
   /**
    * Find all micro plans for a master plan
    */

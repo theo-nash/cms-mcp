@@ -27,6 +27,22 @@ export class ContentRepository extends BaseRepository<Content> {
     }
 
     /**
+     * Find content by brand ID
+     */
+    async findByBrandId(brandId: string): Promise<Content[]> {
+        await this.initCollection();
+        const results = await this.collection.find({ brandId }).toArray();
+
+        return results.map(result => {
+            const document = {
+                ...result,
+                _id: this.fromObjectId(result._id)
+            };
+            return this.validate(document);
+        });
+    }
+
+    /**
      * Find scheduled content that should be published
      */
     async findScheduledBefore(date: Date): Promise<Content[]> {
@@ -77,5 +93,50 @@ export class ContentRepository extends BaseRepository<Content> {
             };
             return this.validate(document);
         });
+    }
+
+    async update(id: string, updates: Partial<Omit<Content, "_id">>): Promise<Content | null> {
+        await this.initCollection();
+
+        // Get current content
+        const existingContent = await this.findById(id);
+        if (!existingContent) return null;
+
+        // Special handling for stateMetadata to ensure we don't completely overwrite it
+        if (updates.stateMetadata && existingContent.stateMetadata) {
+            updates.stateMetadata = {
+                ...existingContent.stateMetadata,
+                ...updates.stateMetadata
+            };
+        }
+
+        // Special handling for publishedMetadata
+        if (updates.publishedMetadata && existingContent.publishedMetadata) {
+            updates.publishedMetadata = {
+                ...existingContent.publishedMetadata,
+                ...updates.publishedMetadata
+            };
+        }
+
+        // Merge updates with existing content
+        const contentToUpdate = {
+            ...existingContent,
+            ...updates,
+            updated_at: new Date()
+        };
+
+        // Validate
+        const validatedContent = this.validate(contentToUpdate);
+
+        // Remove _id for update
+        const { _id, ...updateData } = validatedContent as any;
+
+        // Perform update
+        await this.collection.updateOne(
+            { _id: this.toObjectId(id) },
+            { $set: updateData }
+        );
+
+        return validatedContent;
     }
 }

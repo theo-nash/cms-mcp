@@ -1,21 +1,27 @@
-import { Scraper } from "agent-twitter-client";
+import { TwitterClient } from "../channels/twitter/client.js";
 import { Content } from "../models/content.model.js";
 import { Brand } from "../models/brand.model.js";
+import { BrandService } from "./brand.service.js";
 
 export class TwitterService {
-    private scraperCache: Map<string, Scraper> = new Map();
+    private twitterClients: Map<string, TwitterClient> = new Map();
+    private brandService: BrandService;
+
+    constructor() {
+        this.brandService = new BrandService();
+    }
 
     /**
      * Get or create a Twitter client for a brand
      */
-    private async getClientForBrand(brand: Brand): Promise<Scraper> {
-        if (!brand._id) throw new Error("Brand must have an _id");
+    async getClientForBrand(brandId: string): Promise<TwitterClient> {
+        if (!brandId) throw new Error("Brand id must be provided");
 
-        if (this.scraperCache.has(brand._id)) {
-            return this.scraperCache.get(brand._id)!;
+        if (this.twitterClients.has(brandId)) {
+            return this.twitterClients.get(brandId)!;
         }
 
-        const scraper = new Scraper();
+        const twitterClient = new TwitterClient();
 
         // Get credentials from environment variables
         const username = process.env.TWITTER_USERNAME;
@@ -26,32 +32,19 @@ export class TwitterService {
             throw new Error("Twitter credentials are not set in environment variables");
         }
 
-        this.scraperCache.set(brand._id, scraper);
-        return scraper;
+        this.twitterClients.set(brandId, twitterClient);
+        return twitterClient;
     }
 
     /**
      * Publish content to Twitter
      */
-    async publishContent(content: Content, brand: Brand): Promise<{ id: string, url: string }> {
+    async publishContent(content: Content, brandId: string): Promise<{ id: string, url: string }> {
         try {
-            // For testing only
-            return {
-                id: "TestId",
-                url: "testURL"
-            }
+            const twitterClient = await this.getClientForBrand(brandId);
+            const tweet = await twitterClient.sendTweet(content.content);
+            return { id: tweet.id, url: tweet.permanentUrl };
 
-            const scraper = await this.getClientForBrand(brand);
-            const response = await scraper.sendTweet(content.content);
-
-            const responseText = await response.text();
-            const responseData = JSON.parse(responseText);
-            const tweetId = responseData?.data?.create_tweet?.tweet_results?.result?.rest_id;
-
-            return {
-                id: tweetId,
-                url: `Demonstration`
-            };
         } catch (error) {
             console.error(`Failed to publish tweet for content ${content._id}:`, error);
             throw error;

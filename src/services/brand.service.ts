@@ -52,10 +52,54 @@ export class BrandService {
         return await this.brandRepository.findById(brandId);
     }
 
+    /** 
+     * Get brand by name
+     */
+    async getBrandByName(name: string): Promise<Brand | null> {
+        return await this.brandRepository.findByName(name);
+    }
+
     /**
      * Update brand
      */
+    // In brand.service.ts
     async updateBrand(brandId: string, updates: Partial<BrandCreationData>): Promise<Brand | null> {
+        // If updating guidelines, handle the merge specially
+        if (updates.guidelines) {
+            const brand = await this.getBrand(brandId);
+            if (!brand) return null;
+
+            // If brand already has guidelines, merge them
+            if (brand.guidelines) {
+                // Create merged guidelines object with proper property handling
+                updates.guidelines = {
+                    // Use new values if provided, otherwise keep existing values
+                    tone: updates.guidelines.tone ?? brand.guidelines.tone ?? [],
+                    vocabulary: updates.guidelines.vocabulary ?? brand.guidelines.vocabulary ?? [],
+                    avoidedTerms: updates.guidelines.avoidedTerms ?? brand.guidelines.avoidedTerms ?? [],
+
+                    // Handle nested visualIdentity object
+                    visualIdentity: updates.guidelines.visualIdentity
+                        ? {
+                            ...(brand.guidelines.visualIdentity || {}),
+                            ...updates.guidelines.visualIdentity
+                        }
+                        : brand.guidelines.visualIdentity,
+
+                    // Handle nested narratives object
+                    narratives: updates.guidelines.narratives
+                        ? {
+                            ...(brand.guidelines.narratives || {}),
+                            ...updates.guidelines.narratives
+                        }
+                        : brand.guidelines.narratives,
+
+                    // Handle keyMessages array
+                    keyMessages: updates.guidelines.keyMessages ?? brand.guidelines.keyMessages
+                };
+            }
+        }
+
         return await this.brandRepository.update(brandId, updates);
     }
 
