@@ -20,14 +20,13 @@ export function registerTwitterTools(server: McpServer) {
         "getUserTweets",
         "Retrieve tweets from a specified Twitter user's timeline.",
         {
-            brand_id: z.string(),
             username: z.string(),
             count: z.number().int().min(1).max(100).default(20),
             include_replies: z.boolean().default(false),
             include_retweets: z.boolean().default(true)
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const tweets = await twitterClient.getUserTweets(
                 params.username,
                 params.count,
@@ -52,11 +51,10 @@ export function registerTwitterTools(server: McpServer) {
         "getTweetById",
         "Retrieve a specific tweet by its ID.",
         {
-            brand_id: z.string(),
             tweet_id: z.string()
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const tweet = await twitterClient.getTweetById(params.tweet_id);
 
             return {
@@ -76,11 +74,10 @@ export function registerTwitterTools(server: McpServer) {
         "getUserTimeline",
         "Retrieve tweets from the authenticated user's home timeline.",
         {
-            brand_id: z.string(),
             count: z.number().int().min(1).max(100).default(20)
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const tweets = await twitterClient.getUserTimeline(params.count);
 
             return {
@@ -100,13 +97,12 @@ export function registerTwitterTools(server: McpServer) {
         "searchTweets",
         "Search for tweets matching a specific query.",
         {
-            brand_id: z.string(),
             query: z.string(),
             count: z.number().int().min(1).max(100).default(20),
             search_mode: z.enum(["Top", "Latest", "Photos", "Videos"]).default("Top")
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const searchResults = await twitterClient.searchTweets(
                 params.query,
                 params.count,
@@ -131,7 +127,6 @@ export function registerTwitterTools(server: McpServer) {
         "sendTweet",
         "Post a new tweet, optionally as a reply to another tweet.",
         {
-            brand_id: z.string(),
             text: z.string().max(280),
             reply_to_tweet_id: z.string().optional(),
             media: z.array(z.object({
@@ -140,7 +135,7 @@ export function registerTwitterTools(server: McpServer) {
             })).optional()
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const tweet = await twitterClient.sendTweet(
                 params.text,
                 params.reply_to_tweet_id,
@@ -164,7 +159,6 @@ export function registerTwitterTools(server: McpServer) {
         "sendTweetWithPoll",
         "Post a new tweet with a poll attached.",
         {
-            brand_id: z.string(),
             text: z.string().max(280),
             poll: z.object({
                 options: z.array(z.object({
@@ -175,7 +169,7 @@ export function registerTwitterTools(server: McpServer) {
             reply_to_tweet_id: z.string().optional()
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const tweet = await twitterClient.sendTweetWithPoll(
                 params.text,
                 params.poll,
@@ -199,11 +193,10 @@ export function registerTwitterTools(server: McpServer) {
         "likeTweet",
         "Like a specific tweet.",
         {
-            brand_id: z.string(),
             tweet_id: z.string()
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const result = await twitterClient.likeTweet(params.tweet_id);
 
             return {
@@ -223,11 +216,10 @@ export function registerTwitterTools(server: McpServer) {
         "retweet",
         "Retweet a specific tweet.",
         {
-            brand_id: z.string(),
             tweet_id: z.string()
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const result = await twitterClient.retweet(params.tweet_id);
 
             return {
@@ -247,7 +239,6 @@ export function registerTwitterTools(server: McpServer) {
         "quoteTweet",
         "Quote a specific tweet with additional text.",
         {
-            brand_id: z.string(),
             text: z.string().max(280),
             quoted_tweet_id: z.string(),
             media: z.array(z.object({
@@ -256,7 +247,7 @@ export function registerTwitterTools(server: McpServer) {
             })).optional()
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const tweet = await twitterClient.quoteTweet(
                 params.text,
                 params.quoted_tweet_id,
@@ -280,11 +271,10 @@ export function registerTwitterTools(server: McpServer) {
         "getUserProfile",
         "Retrieve a Twitter user's profile information.",
         {
-            brand_id: z.string(),
             username: z.string()
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const profile = await twitterClient.getUserProfile(params.username);
 
             return {
@@ -304,11 +294,10 @@ export function registerTwitterTools(server: McpServer) {
         "followUser",
         "Follow a specific Twitter user.",
         {
-            brand_id: z.string(),
             username: z.string()
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const result = await twitterClient.followUser(params.username);
 
             return {
@@ -328,12 +317,11 @@ export function registerTwitterTools(server: McpServer) {
         "getFollowers",
         "Retrieve a list of followers for a specific Twitter user.",
         {
-            brand_id: z.string(),
             user_id: z.string(),
             count: z.number().int().min(1).max(100).default(20)
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const profiles = await twitterClient.getFollowers(params.user_id, params.count);
 
             return {
@@ -353,12 +341,11 @@ export function registerTwitterTools(server: McpServer) {
         "getFollowing",
         "Retrieve a list of users that a specific Twitter user is following.",
         {
-            brand_id: z.string(),
             user_id: z.string(),
             count: z.number().int().min(1).max(100).default(20)
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const profiles = await twitterClient.getFollowing(params.user_id, params.count);
 
             return {
@@ -378,11 +365,10 @@ export function registerTwitterTools(server: McpServer) {
         "getUserMentions",
         "Retrieve tweets that mention the authenticated user.",
         {
-            brand_id: z.string(),
             count: z.number().int().min(1).max(100).default(20)
         },
         async (params) => {
-            const twitterClient = await twitterService.getClientForBrand(params.brand_id);
+            const twitterClient = await twitterService.getClientForBrand("default");
             const tweets = await twitterClient.getUserMentions(params.count);
 
             return {

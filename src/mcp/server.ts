@@ -11,7 +11,8 @@ export async function setupMcpServer() {
   const server = new McpServer({
     name: "CMS-MCP-Server",
     version: "1.0.0",
-  });
+  }, { capabilities: { logging: {} } });
+
 
   // Register tools
   registerBrandTools(server);

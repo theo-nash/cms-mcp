@@ -22,10 +22,6 @@ async function startApplication() {
     await connectToDatabase();
     console.log("Database connection established");
 
-    // Start the MCP server
-    const mcpServer = await setupMcpServer();
-    console.log("MCP server initialized");
-
     // Start the REST API server
     const apiServer = await setupApiServer();
     apiServer.listen(apiPort, () => {
