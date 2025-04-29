@@ -25,7 +25,10 @@ export async function setupMcpServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
 
-  console.log("MCP server started with Stdio transport");
+  server.server.sendLoggingMessage({
+    level: "info",
+    data: "MCP server started with Stdio transport",
+  });
 
   return server;
 }

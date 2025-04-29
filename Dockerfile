@@ -25,6 +25,9 @@ RUN npm install @roamhq/wrtc-linux-x64
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/package*.json ./
 
+# Copy environment files
+COPY .env* ./
+
 # Health check for both stages
 HEALTHCHECK --interval=30s --timeout=3s --start-period=30s \
     CMD wget --no-verbose --tries=1 --spider http://localhost:3000/api-docs || exit 1

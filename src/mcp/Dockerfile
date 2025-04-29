@@ -7,5 +7,8 @@ RUN npm install
 COPY . .
 RUN npm run build
 
+# Copy environment files
+COPY .env* ./
+
 # The crucial part - command to start only the MCP server
 CMD ["node", "dist/mcp/index.js"]

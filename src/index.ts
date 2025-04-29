@@ -16,7 +16,7 @@ const apiPort = parseInt(process.env.API_PORT || "3000", 10);
 
 async function startApplication() {
   try {
-    console.log("Starting CMS with MCP and REST API integration...");
+    console.log("Starting CMS with REST API integration...");
 
     // Connect to database
     await connectToDatabase();
