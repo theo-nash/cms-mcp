@@ -188,8 +188,21 @@ The system provides several MCP tools for AI/LLM integration:
 - `addContentToPlan` - Add content to a plan
 
 ### Twitter Tools
-- `publishTweet` - Publish content to Twitter
-- `getTweetStatus` - Check tweet status
+- `getUserTweets` - Retrieve tweets from a specified Twitter user's timeline
+- `getTweetById` - Retrieve a specific tweet by its ID
+- `getUserTimeline` - Retrieve tweets from the authenticated user's home timeline
+- `searchTweets` - Search for tweets matching a specific query
+- `sendTweet` - Post a new tweet, optionally as a reply to another tweet
+- `sendTweetWithPoll` - Post a new tweet with a poll attached
+- `likeTweet` - Like a specific tweet
+- `retweet` - Retweet a specific tweet
+- `quoteTweet` - Quote a specific tweet with additional text
+- `getUserProfile` - Retrieve a Twitter user's profile information
+- `followUser` - Follow a specific Twitter user
+- `getFollowers` - Retrieve a list of followers for a specific Twitter user
+- `getFollowing` - Retrieve a list of users that a specific Twitter user is following
+- `getUserMentions` - Retrieve tweets that mention the authenticated user
+- `publishToTwitter` - Publish a content item directly to Twitter
 
 ## Database Schema
 
@@ -206,7 +219,16 @@ The system provides several MCP tools for AI/LLM integration:
     visualIdentity?: {
       primaryColor?: string;
       secondaryColor?: string;
-    }
+    };
+    narratives?: {
+      elevatorPitch?: string;
+      shortNarrative?: string;
+      fullNarrative?: string;
+    };
+    keyMessages?: Array<{
+      audienceSegment: string;
+      message: string;
+    }>;
   };
   created_at: Date;
   updated_at: Date;
@@ -217,11 +239,24 @@ The system provides several MCP tools for AI/LLM integration:
 ```typescript
 {
   _id: string;
-  planId: string;
-  brandId: string;
+  microPlanId?: string;
+  brandId?: string;
   title: string;
   content: string;
   state: "draft" | "ready" | "published";
+  format?: string;
+  platform?: string;
+  mediaRequirements?: {
+    type: string;
+    description: string;
+  };
+  targetAudience?: string;
+  keywords?: string[];
+  publishedMetadata?: {
+    url?: string;
+    postId?: string;
+    platformSpecificData?: Record<string, any>;
+  };
   stateMetadata: {
     updatedAt: Date;
     updatedBy: string;
@@ -230,6 +265,118 @@ The system provides several MCP tools for AI/LLM integration:
     publishedAt?: Date;
     publishedUrl?: string;
   };
+  created_at: Date;
+  updated_at: Date;
+}
+```
+
+### Campaign
+```typescript
+{
+  _id: string;
+  brandId: string;
+  name: string;
+  description?: string;
+  objectives?: string[];
+  startDate: Date;
+  endDate: Date;
+  goals?: Array<{
+    type: string;
+    description: string;
+    priority: number;
+    kpis: Array<{
+      metric: string;
+      target: number;
+    }>;
+    completionCriteria?: string;
+  }>;
+  audience?: Array<{
+    segment: string;
+    characteristics: string[];
+    painPoints: string[];
+  }>;
+  contentMix?: Array<{
+    category: string;
+    ratio: number;
+    platforms: Array<{
+      name: string;
+      format: string;
+    }>;
+  }>;
+  majorMilestones?: Array<{
+    date: Date;
+    description: string;
+    status: "pending" | "completed";
+  }>;
+  status: "draft" | "active" | "completed" | "archived";
+  stateMetadata?: {
+    updatedAt: Date;
+    updatedBy: string;
+    comments?: string;
+  };
+  created_at: Date;
+  updated_at: Date;
+}
+```
+
+### Plan
+```typescript
+{
+  _id: string;
+  title: string;
+  type: "master" | "micro";
+  dateRange: {
+    start: Date;
+    end: Date;
+  };
+  goals: string[];
+  targetAudience: string;
+  channels: string[];
+  state: "draft" | "review" | "approved" | "active";
+  stateMetadata: {
+    version: number;
+    updatedAt: Date;
+    updatedBy: string;
+    comments?: string;
+  };
+  isActive: boolean;
+  
+  // Master Plan specific fields (when type is "master")
+  campaignId?: string;
+  planGoals?: Array<{
+    campaignGoalId: string;
+    description: string;
+    metrics: Array<{
+      name: string;
+      target: number;
+    }>;
+  }>;
+  contentStrategy?: {
+    approach: string;
+    keyThemes: string[];
+    distribution: Record<string, number>;
+  };
+  timeline?: Array<{
+    date: Date;
+    description: string;
+    type: string;
+    status: "pending" | "in-progress" | "completed";
+  }>;
+  
+  // Micro Plan specific fields (when type is "micro")
+  masterPlanId?: string;
+  contentSeries?: {
+    name?: string;
+    description?: string;
+    expectedPieces?: number;
+    theme?: string;
+  };
+  performanceMetrics?: Array<{
+    metricName: string;
+    target: number;
+    actual?: number;
+  }>;
+  
   created_at: Date;
   updated_at: Date;
 }
