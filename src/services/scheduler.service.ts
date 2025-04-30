@@ -72,32 +72,53 @@ export class SchedulerService {
                         continue;
                     }
 
+                    // Determine if this is standalone content or part of a campaign
+                    let brandId: string;
 
-                    // Get the micro plan
-                    const microPlan = await this.planRepository.findById(content.microPlanId);
-                    if (!microPlan || microPlan.type !== PlanType.Micro) {
-                        console.error(`Micro plan not found for content ${content._id}`);
-                        continue;
-                    }
+                    if (content.brandId) {
+                        // This is standalone content directly associated with a brand
+                        brandId = content.brandId;
+                    } else if (content.microPlanId) {
+                        // This is campaign-driven content - follow the hierarchy
 
-                    // Get the master plan
-                    const masterPlan = await this.planRepository.findById(microPlan.masterPlanId);
-                    if (!masterPlan || masterPlan.type !== PlanType.Master) {
-                        console.error(`Master plan not found for micro plan ${microPlan._id}`);
-                        continue;
-                    }
+                        // Get the micro plan
+                        const microPlan = await this.planRepository.findById(content.microPlanId);
+                        if (!microPlan) {
+                            continue;
+                        }
 
-                    // Get the campaign
-                    const campaign = await this.campaignRepository.findById(masterPlan.campaignId);
-                    if (!campaign) {
-                        console.error(`Campaign not found for master plan ${masterPlan._id}`);
+                        // Verify plan type
+                        if (microPlan.type !== PlanType.Micro) {
+                            continue;
+                        }
+
+                        // Get the master plan
+                        const masterPlan = await this.planRepository.findById(microPlan.masterPlanId);
+                        if (!masterPlan) {
+                            continue;
+                        }
+
+                        // Verify plan type
+                        if (masterPlan.type !== PlanType.Master) {
+                            continue;
+                        }
+
+                        // Get the campaign
+                        const campaign = await this.campaignRepository.findById(masterPlan.campaignId);
+                        if (!campaign) {
+                            continue;
+                        }
+
+                        brandId = campaign.brandId;
+                    } else {
+                        console.warn(`Content ${content._id} is not associated with either a micro plan or a brand`);
                         continue;
                     }
 
                     // Get brand for publishing
-                    const brand = await this.brandRepository.findById(campaign.brandId);
+                    const brand = await this.brandRepository.findById(brandId);
                     if (!brand) {
-                        console.error(`Brand not found for campaign ${campaign._id}`);
+                        console.error(`Brand not found for content ${content._id}`);
                         continue;
                     }
 

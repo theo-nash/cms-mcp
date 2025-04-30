@@ -1,5 +1,6 @@
 import { BaseRepository } from "./base.repository.js";
 import { Brand, BrandSchema } from "../models/brand.model.js";
+import { toDate } from "../utils/merge.js";
 
 export class BrandRepository extends BaseRepository<Brand> {
     constructor() {
@@ -18,7 +19,9 @@ export class BrandRepository extends BaseRepository<Brand> {
         // Convert _id to string
         const document = {
             ...result,
-            _id: this.fromObjectId(result._id)
+            _id: this.fromObjectId(result._id),
+            created_at: toDate(result.created_at),
+            updated_at: toDate(result.updated_at)
         };
 
         return this.validate(document);

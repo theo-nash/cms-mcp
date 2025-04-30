@@ -1,43 +1,8 @@
-import { Campaign, CampaignStatus } from "../models/campaign.model.js";
+import { Campaign, CampaignCreationParams, CampaignCreationSchemaParser, CampaignStatus, CampaignUpdateParams } from "../models/campaign.model.js";
 import { CampaignRepository } from "../repositories/campaign.repository.js";
 import { BrandRepository } from "../repositories/brand.repository.js";
-export interface CampaignCreationData {
-  brandId: string;
-  name: string;
-  description?: string;
-  objectives?: string[];
-  startDate: Date;
-  endDate: Date;
-  userId?: string;
-  goals?: Array<{
-    type: string;
-    description: string;
-    priority: number;
-    kpis: Array<{
-      metric: string;
-      target: number;
-    }>;
-    completionCriteria?: string;
-  }>;
-  audience?: Array<{
-    segment: string;
-    characteristics: string[];
-    painPoints: string[];
-  }>;
-  contentMix?: Array<{
-    category: string;
-    ratio: number;
-    platforms: Array<{
-      name: string;
-      format: string;
-    }>;
-  }>;
-  majorMilestones?: Array<{
-    date: Date;
-    description: string;
-    status?: 'pending' | 'completed';
-  }>;
-}
+import { deepMerge, deepMergeArrays } from "../utils/merge.js";
+import { Brand } from "../models/brand.model.js";
 
 export interface StateTransitionMetadata {
   userId: string;
@@ -56,11 +21,26 @@ export class CampaignService {
   /**
    * Create a new campaign
    */
-  async createCampaign(data: CampaignCreationData): Promise<Campaign> {
+  async createCampaign(data: CampaignCreationParams): Promise<Campaign> {
+    data = CampaignCreationSchemaParser.parse(data);
+
+    let brand: Brand | null = null;
+
     // Verify brand exists
-    const brand = await this.brandRepository.findById(data.brandId);
+    if (data.brandId) {
+      brand = await this.brandRepository.findById(data.brandId);
+      if (!brand) {
+        throw new Error(`Brand with ID ${data.brandId} not found`);
+      }
+    } else if (data.brandName) {
+      brand = await this.brandRepository.findByName(data.brandName);
+      if (!brand) {
+        throw new Error(`Brand with name ${data.brandName} not found`);
+      }
+    }
+
     if (!brand) {
-      throw new Error(`Brand with ID ${data.brandId} not found`);
+      throw new Error("Either brandId or brandName must be provided");
     }
 
     // Check if campaign with same name already exists
@@ -69,9 +49,7 @@ export class CampaignService {
       throw new Error(`Campaign with name "${data.name}" already exists`);
     }
 
-    // Ensure required fields have default values
-    const brandId = data.brandId || "default-brand-id";
-    const userId = data.userId || "system-user";
+    const userId = "system-user";
 
     // Create state metadata
     const stateMetadata = {
@@ -82,12 +60,8 @@ export class CampaignService {
 
     // Create the campaign
     return await this.campaignRepository.create({
-      brandId,
-      name: data.name,
-      description: data.description,
-      objectives: data.objectives || [],
-      startDate: data.startDate,
-      endDate: data.endDate,
+      ...data,
+      brandId: brand._id!,
       status: CampaignStatus.Draft,
       stateMetadata
     });
@@ -98,6 +72,13 @@ export class CampaignService {
    */
   async getCampaignById(id: string): Promise<Campaign | null> {
     return await this.campaignRepository.findById(id);
+  }
+
+  /**
+   * Get campaign by name
+   */
+  async getCampaignByName(name: string): Promise<Campaign | null> {
+    return await this.campaignRepository.findByName(name);
   }
 
   /**
@@ -124,57 +105,72 @@ export class CampaignService {
   /**
    * Update campaign
    */
-  async updateCampaign(
-    id: string,
-    updates: Partial<Omit<Campaign, "_id">>,
-    userId: string
-  ): Promise<Campaign | null> {
+  async updateCampaign(updates: CampaignUpdateParams): Promise<Campaign | null> {
     // Get current campaign
-    const campaign = await this.campaignRepository.findById(id);
+    const campaign = await this.campaignRepository.findById(updates.campaign_id);
     if (!campaign) return null;
 
+    // Process updates to handle nested objects
+    const processedUpdates: Record<string, any> = { ...updates };
+
     // Update state metadata
-    const stateMetadata = {
-      ...campaign.stateMetadata,
-      updatedAt: new Date(),
-      updatedBy: userId
-    };
+    const stateMetadata = deepMerge(
+      campaign.stateMetadata || {
+        updatedAt: new Date(),
+        updatedBy: updates.stateMetadata?.updatedBy || "system",
+        comments: updates.stateMetadata?.comments || ""
+      },
+      {
+        updatedAt: new Date(),
+        updatedBy: updates.stateMetadata?.updatedBy || "system",
+        comments: updates.stateMetadata?.comments || ""
+      }
+    );
+
+    processedUpdates.stateMetadata = stateMetadata;
+
+    // Handle goals array if present
+    if (updates.goals && campaign.goals) {
+      // Merge goals by type (assuming type is unique)
+      processedUpdates.goals = deepMergeArrays(
+        campaign.goals,
+        updates.goals,
+        'type'
+      );
+    }
+
+    // Handle audience array if present
+    if (updates.audience && campaign.audience) {
+      // Merge audience by segment (assuming segment is unique)
+      processedUpdates.audience = deepMergeArrays(
+        campaign.audience,
+        updates.audience,
+        'segment'
+      );
+    }
+
+    // Handle contentMix array if present
+    if (updates.contentMix && campaign.contentMix) {
+      // Merge contentMix by category (assuming category is unique)
+      processedUpdates.contentMix = deepMergeArrays(
+        campaign.contentMix,
+        updates.contentMix,
+        'category'
+      );
+    }
+
+    // Handle majorMilestones array if present
+    if (updates.majorMilestones && campaign.majorMilestones) {
+      // Merge milestones by description (since dates might change)
+      processedUpdates.majorMilestones = deepMergeArrays(
+        campaign.majorMilestones,
+        updates.majorMilestones,
+        'description'
+      );
+    }
 
     // Apply updates
-    return await this.campaignRepository.update(id, {
-      ...updates,
-      stateMetadata
-    });
-  }
-
-  /**
-   * Transition campaign status
-   */
-  async transitionCampaignStatus(
-    id: string,
-    targetStatus: CampaignStatus,
-    metadata: StateTransitionMetadata
-  ): Promise<Campaign | null> {
-    // Get current campaign
-    const campaign = await this.campaignRepository.findById(id);
-    if (!campaign) return null;
-
-    // Validate the transition
-    this.validateStatusTransition(campaign.status, targetStatus);
-
-    // Update state metadata
-    const stateMetadata = {
-      ...campaign.stateMetadata,
-      updatedAt: new Date(),
-      updatedBy: metadata.userId,
-      comments: metadata.comments || campaign.stateMetadata?.comments
-    };
-
-    // Apply the status change
-    return await this.campaignRepository.update(id, {
-      status: targetStatus,
-      stateMetadata
-    });
+    return await this.campaignRepository.update(updates.campaign_id, processedUpdates);
   }
 
   /**
@@ -202,30 +198,32 @@ export class CampaignService {
     }
   }
 
+  /**
+ * Update a single milestone's status
+ */
   async updateMilestoneStatus(
     campaignId: string,
     milestoneIndex: number,
     status: 'pending' | 'completed',
     userId: string
   ): Promise<Campaign | null> {
+    // Get the campaign
     const campaign = await this.getCampaignById(campaignId);
     if (!campaign || !campaign.majorMilestones || !campaign.majorMilestones[milestoneIndex]) {
       return null;
     }
 
-    // Clone the milestones array to avoid direct mutation
+    // Create a copy of the milestones array
     const majorMilestones = [...campaign.majorMilestones];
+
+    // Update the specific milestone
     majorMilestones[milestoneIndex] = {
       ...majorMilestones[milestoneIndex],
       status
     };
 
     // Update the campaign
-    return await this.updateCampaign(
-      campaignId,
-      { majorMilestones },
-      userId
-    );
+    return await this.updateCampaign({ campaign_id: campaignId, majorMilestones });
   }
 
   async getCampaignsWithUpcomingMilestones(daysAhead: number = 7): Promise<Campaign[]> {

@@ -4,6 +4,7 @@ import { MicroPlan, MicroPlanSchema, Plan } from "../models/plan.model.js";
 import { PlanType } from "../models/plan.model.js";
 import { MasterPlanSchema } from "../models/plan.model.js";
 import { MasterPlan } from "../models/plan.model.js";
+import { deepMerge } from "../utils/merge.js";
 
 export class ContentRepository extends BaseRepository<Content> {
     constructor() {
@@ -15,49 +16,23 @@ export class ContentRepository extends BaseRepository<Content> {
      */
     async findByMicroPlanId(microPlanId: string): Promise<Content[]> {
         await this.initCollection();
-        const results = await this.collection.find({ microPlanId }).toArray();
-
-        return results.map(result => {
-            const document = {
-                ...result,
-                _id: this.fromObjectId(result._id)
-            };
-            return this.validate(document);
-        });
+        return await this.find({ microPlanId })
     }
 
     /**
      * Find content by brand ID
      */
     async findByBrandId(brandId: string): Promise<Content[]> {
-        await this.initCollection();
-        const results = await this.collection.find({ brandId }).toArray();
-
-        return results.map(result => {
-            const document = {
-                ...result,
-                _id: this.fromObjectId(result._id)
-            };
-            return this.validate(document);
-        });
+        return await this.find({ brandId })
     }
 
     /**
      * Find scheduled content that should be published
      */
     async findScheduledBefore(date: Date): Promise<Content[]> {
-        await this.initCollection();
-        const results = await this.collection.find({
+        return await this.find({
             state: ContentState.Ready,
             "stateMetadata.scheduledFor": { $lte: date }
-        }).toArray();
-
-        return results.map(result => {
-            const document = {
-                ...result,
-                _id: this.fromObjectId(result._id)
-            };
-            return this.validate(document);
         });
     }
 
@@ -65,65 +40,65 @@ export class ContentRepository extends BaseRepository<Content> {
     * Find content with scheduled dates
     */
     async findWithScheduledDate(): Promise<Content[]> {
-        await this.initCollection();
-        const results = await this.collection.find({
+        return await this.find({
             "stateMetadata.scheduledFor": { $exists: true }
-        }).toArray();
-
-        return results.map(result => {
-            const document = {
-                ...result,
-                _id: this.fromObjectId(result._id)
-            };
-            return this.validate(document);
-        });
+        })
     }
 
     /**
      * Find content by state
      */
     async findByState(state: ContentState): Promise<Content[]> {
-        await this.initCollection();
-        const results = await this.collection.find({ state }).toArray();
-
-        return results.map(result => {
-            const document = {
-                ...result,
-                _id: this.fromObjectId(result._id)
-            };
-            return this.validate(document);
-        });
+        return await this.find({ state });
     }
 
     async update(id: string, updates: Partial<Omit<Content, "_id">>): Promise<Content | null> {
-        await this.initCollection();
-
         // Get current content
         const existingContent = await this.findById(id);
         if (!existingContent) return null;
 
-        // Special handling for stateMetadata to ensure we don't completely overwrite it
+        // Process updates
+        const processedUpdates = { ...updates };
+
+        // Special handling for all nested objects
         if (updates.stateMetadata && existingContent.stateMetadata) {
-            updates.stateMetadata = {
-                ...existingContent.stateMetadata,
-                ...updates.stateMetadata
-            };
+            processedUpdates.stateMetadata = deepMerge(
+                existingContent.stateMetadata,
+                updates.stateMetadata
+            );
         }
 
-        // Special handling for publishedMetadata
         if (updates.publishedMetadata && existingContent.publishedMetadata) {
-            updates.publishedMetadata = {
-                ...existingContent.publishedMetadata,
-                ...updates.publishedMetadata
-            };
+            processedUpdates.publishedMetadata = deepMerge(
+                existingContent.publishedMetadata,
+                updates.publishedMetadata
+            );
         }
 
-        // Merge updates with existing content
-        const contentToUpdate = {
-            ...existingContent,
-            ...updates,
+        if (updates.mediaRequirements && existingContent.mediaRequirements) {
+            processedUpdates.mediaRequirements = deepMerge(
+                existingContent.mediaRequirements,
+                updates.mediaRequirements
+            );
+        }
+
+        // Handle arrays
+        if (updates.keywords && existingContent.keywords) {
+            // Ensure no duplicates in keywords
+            const combinedKeywords = [...existingContent.keywords];
+            updates.keywords.forEach(keyword => {
+                if (!combinedKeywords.includes(keyword)) {
+                    combinedKeywords.push(keyword);
+                }
+            });
+            processedUpdates.keywords = combinedKeywords;
+        }
+
+        // Apply merged updates
+        const contentToUpdate = deepMerge(existingContent, {
+            ...processedUpdates,
             updated_at: new Date()
-        };
+        });
 
         // Validate
         const validatedContent = this.validate(contentToUpdate);

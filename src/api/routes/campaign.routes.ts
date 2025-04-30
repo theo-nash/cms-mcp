@@ -1,8 +1,8 @@
 import { Router, RequestHandler } from "express";
 import { body, param } from "express-validator";
-import { CampaignCreationData, CampaignService } from "../../services/campaign.service.js";
+import { CampaignService } from "../../services/campaign.service.js";
 import { validateRequest } from "../middleware/validate.js";
-import { Campaign, CampaignStatus } from "../../models/campaign.model.js";
+import { Campaign, CampaignStatus, CampaignCreationParams, CampaignUpdateParams, CampaignCreationSchema, CampaignCreationSchemaParser, CampaignUpdateSchema } from "../../models/campaign.model.js";
 import { sanitizeBody, transformDates } from "../middleware/transform.js";
 
 const router = Router();
@@ -193,19 +193,7 @@ const getCampaignByIdHandler: RequestHandler = async (req, res, next) => {
 const createCampaignHandler: RequestHandler = async (req, res, next) => {
   try {
     // Create a properly typed campaign data object
-    const campaignData: CampaignCreationData = {
-      brandId: req.body.brandId,
-      name: req.body.name,
-      description: req.body.description || undefined,
-      startDate: req.body.startDate,
-      endDate: req.body.endDate,
-      objectives: req.body.objectives || [],
-      userId: req.body.userId || "default-user-id",
-      goals: req.body.goals,
-      audience: req.body.audience,
-      contentMix: req.body.contentMix,
-      majorMilestones: req.body.majorMilestones
-    };
+    const campaignData = CampaignCreationSchemaParser.parse(req.body);
 
     const campaign = await campaignService.createCampaign(campaignData);
     void res.status(201).json(campaign);
@@ -342,28 +330,9 @@ const createCampaignHandler: RequestHandler = async (req, res, next) => {
 const updateCampaignHandler: RequestHandler = async (req, res, next) => {
   try {
     // Create a sanitized update object with proper types
-    const updates: Partial<Omit<Campaign, "_id">> = {};
+    const updates = CampaignUpdateSchema.parse(req.body);
 
-    if (req.body.name !== undefined) updates.name = req.body.name;
-    if (req.body.description !== undefined) updates.description = req.body.description;
-    if (req.body.startDate !== undefined) updates.startDate = new Date(req.body.startDate);
-    if (req.body.endDate !== undefined) updates.endDate = new Date(req.body.endDate);
-    if (req.body.objectives !== undefined) updates.objectives = req.body.objectives;
-    if (req.body.goals !== undefined) updates.goals = req.body.goals;
-    if (req.body.audience !== undefined) updates.audience = req.body.audience;
-    if (req.body.contentMix !== undefined) updates.contentMix = req.body.contentMix;
-    if (req.body.majorMilestones !== undefined) updates.majorMilestones = req.body.majorMilestones;
-
-    // Use enum for status instead of string literals
-    if (req.body.status !== undefined) {
-      updates.status = req.body.status as CampaignStatus;
-    }
-
-    const campaign = await campaignService.updateCampaign(
-      req.params.id,
-      updates,
-      req.body.userId || "default-user-id"
-    );
+    const campaign = await campaignService.updateCampaign(updates);
 
     if (!campaign) {
       void res.status(404).json({ message: "Campaign not found" });

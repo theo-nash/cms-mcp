@@ -38,7 +38,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Retrieved ${tweets.length} tweets from @${params.username}`
+                        text: JSON.stringify(tweets)
                     }
                 ],
                 tweets: JSON.stringify(tweets)
@@ -61,7 +61,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Retrieved tweet with ID ${params.tweet_id}`
+                        text: JSON.stringify(tweet)
                     }
                 ],
                 tweet: JSON.stringify(tweet)
@@ -84,7 +84,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Retrieved ${tweets.length} tweets from home timeline`
+                        text: JSON.stringify(tweets)
                     }
                 ],
                 tweets: JSON.stringify(tweets)
@@ -113,7 +113,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Found ${searchResults.tweets.length} tweets matching "${params.query}"`
+                        text: JSON.stringify(searchResults.tweets)
                     }
                 ],
                 tweets: JSON.stringify(searchResults.tweets),
@@ -146,7 +146,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Successfully posted tweet: ${tweet.permanentUrl}`
+                        text: JSON.stringify(tweet)
                     }
                 ],
                 tweet: JSON.stringify(tweet)
@@ -180,7 +180,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Successfully posted tweet with poll: ${tweet.permanentUrl}`
+                        text: JSON.stringify(tweet)
                     }
                 ],
                 tweet: JSON.stringify(tweet)
@@ -258,7 +258,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Successfully posted quote tweet: ${tweet.permanentUrl}`
+                        text: JSON.stringify(tweet)
                     }
                 ],
                 tweet: JSON.stringify(tweet)
@@ -281,7 +281,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Retrieved profile for @${params.username}`
+                        text: JSON.stringify(profile)
                     }
                 ],
                 profile: JSON.stringify(profile)
@@ -328,7 +328,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Retrieved ${profiles.length} followers for user ID ${params.user_id}`
+                        text: JSON.stringify(profiles)
                     }
                 ],
                 followers: JSON.stringify(profiles)
@@ -352,7 +352,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Retrieved ${profiles.length} accounts that user ID ${params.user_id} is following`
+                        text: JSON.stringify(profiles)
                     }
                 ],
                 following: JSON.stringify(profiles)
@@ -375,7 +375,7 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Retrieved ${tweets.length} mentions for the authenticated user`
+                        text: JSON.stringify(tweets)
                     }
                 ],
                 mentions: JSON.stringify(tweets)
@@ -386,10 +386,10 @@ export function registerTwitterTools(server: McpServer) {
     // Publish content to Twitter
     server.tool(
         "publishToTwitter",
-        "Publish a content item directly to Twitter. Use this to post approved content as a tweet, automatically updating the content's status and storing the tweet URL and ID.",
+        "Publishes a content item directly to Twitter and transitions it to 'published' state. Only content in 'ready' state can be published. The system determines the appropriate Twitter account based on the content's brand association. After publication, the tweet URL and ID are stored with the content.\n\nExample: publishToTwitter(content_id: \"507f1f77bcf86cd799439011\", user_id: \"user123\")",
         {
-            content_id: z.string(),
-            user_id: z.string()
+            content_id: z.string().describe("ID of the content to publish (required)"),
+            user_id: z.string().describe("ID of the user initiating the publication (required)")
         },
         async (params) => {
             // Get the content
@@ -460,13 +460,28 @@ export function registerTwitterTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Content published to Twitter: ${result.url}`
+                        text: `Content "${content.title}" successfully published to Twitter`
+                    },
+                    {
+                        type: "text",
+                        text: `Tweet URL: ${result.url}`
+                    },
+                    {
+                        type: "text",
+                        text: JSON.stringify(updatedContent)
                     }
                 ],
                 content_id: content._id,
+                content_title: content.title,
+                previous_state: ContentState.Ready,
+                current_state: ContentState.Published,
                 tweet_id: result.id,
                 tweet_url: result.url,
-                published_at: updatedContent.stateMetadata.updatedAt.toISOString()
+                brand_id: brandId,
+                brand_name: brand.name,
+                publishing_user_id: params.user_id,
+                published_at: updatedContent.stateMetadata.updatedAt.toISOString(),
+                character_count: content.content.length
             };
         }
     );

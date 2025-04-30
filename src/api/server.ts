@@ -8,6 +8,7 @@ import { brandRoutes } from "./routes/brand.routes.js";
 import { errorHandler } from "../utils/errors.js";
 import { setupSwagger } from "./swagger.js";
 import bodyParser from "body-parser";
+import { formatResponseDates } from "../utils/api.utils.js";
 const { json } = bodyParser;
 
 export async function setupApiServer() {
@@ -17,6 +18,9 @@ export async function setupApiServer() {
   app.use(helmet());
   app.use(cors());
   app.use(json());
+
+  // Add middleware for consistent date formatting in responses
+  app.use(formatResponseDates);
 
   // Health check endpoint
   app.get("/api/v1/health", (req, res) => {

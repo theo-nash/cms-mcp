@@ -175,11 +175,14 @@ The system provides several MCP tools for AI/LLM integration:
 - `createContent` - Create new content
 - `getContent` - Retrieve content details
 - `scheduleContent` - Schedule content for publishing
+- `approveContent` - Approves content
 - `publishContent` - Publish content immediately
 
 ### Campaign Tools
 - `createCampaign` - Create a new campaign
 - `getCampaign` - Retrieve campaign details
+- `listCampaigns` - Lists all campaigns
+- `udpdateCampaign` - Updates a specified campaign
 - `addPlanToCampaign` - Add a plan to a campaign
 
 ### Plan Tools

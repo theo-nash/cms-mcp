@@ -4,9 +4,13 @@ import { connectToDatabase } from "../config/db.js";
 import dotenv from "dotenv";
 import path from "path";
 import fs from "fs";
+import { fileURLToPath } from "url";
 
 // Try to load environment variables from multiple possible locations
 function loadEnvironment() {
+    const __filename = fileURLToPath(import.meta.url);
+    const __dirname = path.dirname(__filename);
+
     // Possible env file locations
     const envFiles = [
         path.resolve(process.cwd(), '.env.mcp'),
@@ -20,7 +24,6 @@ function loadEnvironment() {
     let loaded = false;
     for (const envPath of envFiles) {
         if (fs.existsSync(envPath)) {
-            console.log(`Loading environment from ${envPath}`);
             dotenv.config({ path: envPath });
             loaded = true;
             break;

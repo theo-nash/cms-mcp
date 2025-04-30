@@ -1,61 +1,8 @@
-import { Plan, PlanState, PlanType, MasterPlan, MicroPlan } from "../models/plan.model.js";
+import { Campaign } from "../models/campaign.model.js";
+import { Plan, PlanState, PlanType, MasterPlan, MicroPlan, MasterPlanCreationParams, MicroPlanCreationParams, MicroPlanUpdateParams, MasterPlanUpdateParams, MasterPlanCreationSchemaParser, MicroPlanCreationSchemaParser, MasterPlanUpdateSchemaParser, MicroPlanUpdateSchemaParser } from "../models/plan.model.js";
+import { BrandRepository } from "../repositories/brand.repository.js";
+import { CampaignRepository } from "../repositories/campaign.repository.js";
 import { PlanRepository } from "../repositories/plan.repository.js";
-
-export interface MasterPlanCreationData {
-  campaignId: string;
-  title: string;
-  dateRange: {
-    start: Date;
-    end: Date;
-  };
-  goals: string[];
-  targetAudience: string;
-  channels: string[];
-  userId: string;
-  planGoals?: Array<{
-    campaignGoalId: string;
-    description: string;
-    metrics: Array<{
-      name: string;
-      target: number;
-    }>;
-  }>;
-  contentStrategy?: {
-    approach: string;
-    keyThemes: string[];
-    distribution: Record<string, number>;
-  };
-  timeline?: Array<{
-    date: Date;
-    description: string;
-    type: string;
-    status?: 'pending' | 'in-progress' | 'completed';
-  }>;
-}
-
-export interface MicroPlanCreationData {
-  masterPlanId: string;
-  title: string;
-  dateRange: {
-    start: Date;
-    end: Date;
-  };
-  goals: string[];
-  targetAudience: string;
-  channels: string[];
-  userId: string;
-  contentSeries?: {
-    name?: string;
-    description?: string;
-    expectedPieces?: number;
-    theme?: string;
-  };
-  performanceMetrics?: Array<{
-    metricName: string;
-    target: number;
-    actual?: number;
-  }>;
-}
 
 export interface StateTransitionMetadata {
   userId: string;
@@ -64,28 +11,48 @@ export interface StateTransitionMetadata {
 
 export class PlanService {
   private planRepository: PlanRepository;
-
+  private campaignRepository: CampaignRepository;
+  private brandRepository: BrandRepository;
   constructor() {
     this.planRepository = new PlanRepository();
+    this.campaignRepository = new CampaignRepository();
+    this.brandRepository = new BrandRepository();
   }
 
   /**
    * Create a new master plan
    */
-  async createMasterPlan(data: MasterPlanCreationData): Promise<MasterPlan> {
+  async createMasterPlan(data: MasterPlanCreationParams): Promise<MasterPlan> {
+    data = MasterPlanCreationSchemaParser.parse(data);
+
+    // If campaign name is provided, get the campaign id
+    let campaign: Campaign | null = null;
+
+    if (data.campaignName) {
+      campaign = await this.campaignRepository.findByName(data.campaignName);
+      if (!campaign) {
+        throw new Error(`Campaign with name ${data.campaignName} not found`);
+      }
+    } else if (data.campaignId) {
+      campaign = await this.campaignRepository.findById(data.campaignId);
+      if (!campaign) {
+        throw new Error(`Campaign with id ${data.campaignId} not found`);
+      }
+    }
+
+    if (!campaign) {
+      throw new Error("Either campaignId or campaignName must be provided");
+    }
+
     const masterPlanData: Omit<MasterPlan, "_id" | "updated_at"> = {
+      ...data,
       type: PlanType.Master,
-      campaignId: data.campaignId,
-      title: data.title,
-      dateRange: data.dateRange,
-      goals: data.goals,
-      targetAudience: data.targetAudience,
-      channels: data.channels,
+      campaignId: campaign._id!,
       state: PlanState.Draft,
       stateMetadata: {
         version: 1,
         updatedAt: new Date(),
-        updatedBy: data.userId,
+        updatedBy: "system-user",
         comments: ""
       },
       isActive: false,
@@ -98,20 +65,34 @@ export class PlanService {
   /**
    * Create a new micro plan
    */
-  async createMicroPlan(data: MicroPlanCreationData): Promise<MicroPlan> {
+  async createMicroPlan(data: MicroPlanCreationParams): Promise<MicroPlan> {
+    data = MicroPlanCreationSchemaParser.parse(data);
+
+    let masterPlan: MasterPlan | null = null;
+
+    if (data.masterPlanId) {
+      masterPlan = await this.planRepository.findById(data.masterPlanId) as MasterPlan;
+    } else if (data.masterPlanName) {
+      const plans = await this.planRepository.findPlanByName(data.masterPlanName);
+      if (!plans || plans.length === 0) {
+        throw new Error(`Master plan with name ${data.masterPlanName} not found`);
+      }
+      masterPlan = plans[0] as MasterPlan;
+    }
+
+    if (!masterPlan) {
+      throw new Error("Either masterPlanId or masterPlanName must be provided");
+    }
+
     const microPlanData: Omit<MicroPlan, "_id" | "updated_at"> = {
+      ...data,
       type: PlanType.Micro,
-      masterPlanId: data.masterPlanId,
-      title: data.title,
-      dateRange: data.dateRange,
-      goals: data.goals,
-      targetAudience: data.targetAudience,
-      channels: data.channels,
+      masterPlanId: masterPlan._id!,
       state: PlanState.Draft,
       stateMetadata: {
         version: 1,
         updatedAt: new Date(),
-        updatedBy: data.userId,
+        updatedBy: "system-user",
         comments: ""
       },
       isActive: false,
@@ -129,10 +110,57 @@ export class PlanService {
   }
 
   /**
+   * Get master plan by name
+   */
+  async getMasterPlanByName(name: string): Promise<MasterPlan | null> {
+    const plans = await this.planRepository.find({ title: name, type: PlanType.Master }) as MasterPlan[];
+    // First, check if there is only one plan with the same name
+    if (plans.length === 1) {
+      return plans[0];
+    }
+
+    // If there are multiple, see if there is an active plan
+    const activePlan = plans.find(plan => plan.isActive);
+    if (activePlan) {
+      return activePlan;
+    }
+
+    // If there are multiple plans with the same name, return the latest one
+    return plans.sort((a, b) => b.created_at.getTime() - a.created_at.getTime())[0] || null;
+  }
+
+  /**
+   * Get master plan by ID
+   */
+  async getMasterPlanById(id: string): Promise<MasterPlan | null> {
+    return await this.planRepository.findById(id) as MasterPlan;
+  }
+
+  /**
    * Get micro plans by master plan ID
    */
   async getMicroPlansByMasterId(masterPlanId: string): Promise<MicroPlan[]> {
     return await this.planRepository.findMicroPlansByMasterId(masterPlanId);
+  }
+
+  /**
+   * Get micro plan by name
+   */
+  async getMicroPlanByName(name: string): Promise<MicroPlan | null> {
+    const plans = await this.planRepository.find({ title: name, type: PlanType.Micro }) as MicroPlan[];
+    // First, check if there is only one plan with the same name
+    if (plans.length === 1) {
+      return plans[0];
+    }
+
+    // If there are multiple, see if there is an active plan
+    const activePlan = plans.find(plan => plan.isActive);
+    if (activePlan) {
+      return activePlan;
+    }
+
+    // If there are multiple plans with the same name, return the latest one
+    return plans.sort((a, b) => b.created_at.getTime() - a.created_at.getTime())[0] || null;
   }
 
   /**
@@ -196,23 +224,45 @@ export class PlanService {
    * Update plan
    */
   async updatePlan(
-    id: string,
-    updates: Partial<Omit<Plan, "_id">>,
-    userId: string
+    updates: MasterPlanUpdateParams | MicroPlanUpdateParams,
   ): Promise<Plan | null> {
-    // Get current plan
-    const plan = await this.planRepository.findById(id);
-    if (!plan) return null;
+
+    if (!updates.plan_id && !updates.plan_name) {
+      throw new Error("Either plan_id or plan_name must be provided");
+    }
+
+    let plan: Plan | null = null;
+
+    if (updates.plan_id) {
+      plan = await this.planRepository.findById(updates.plan_id);
+    } else if (updates.plan_name) {
+      const plans = await this.planRepository.findPlanByName(updates.plan_name);
+      if (!plans || plans.length === 0) {
+        throw new Error(`Plan with name ${updates.plan_name} not found`);
+      }
+      plan = plans[0];
+    }
+
+    if (!plan) {
+      throw new Error("Plan not found");
+    }
+
+    // Type the updates to the correct type
+    if (plan.type === PlanType.Master) {
+      updates = updates as MasterPlanUpdateParams;
+    } else {
+      updates = updates as MicroPlanUpdateParams;
+    }
 
     // Update state metadata
     const stateMetadata = {
       ...plan.stateMetadata,
       updatedAt: new Date(),
-      updatedBy: userId
+      updatedBy: "system-user"
     };
 
     // Apply updates
-    return await this.planRepository.update(id, {
+    return await this.planRepository.update(plan._id!, {
       ...updates,
       stateMetadata
     });
@@ -306,9 +356,16 @@ export class PlanService {
    * Get plans by brand ID
    */
   async getPlansByBrandId(brandId: string): Promise<Plan[]> {
-    // First get all master plans
-    const plans = await this.planRepository.find({ type: PlanType.Master });
-    const masterPlans = plans as MasterPlan[];
+    // Get all campaigns for the brand
+    const campaigns = await this.campaignRepository.findByBrandId(brandId);
+
+    // Get all master plans for each campaign
+    const masterPlansPromises = campaigns.map(campaign =>
+      this.planRepository.findMasterPlansByCampaignId(campaign._id!)
+    );
+
+    const masterPlansArrays = await Promise.all(masterPlansPromises);
+    const masterPlans = masterPlansArrays.flat();
 
     // Then get all micro plans for these master plans
     const microPlansPromises = masterPlans.map(masterPlan =>
@@ -319,6 +376,17 @@ export class PlanService {
     const microPlans = microPlansArrays.flat();
 
     return [...masterPlans, ...microPlans];
+  }
+
+  /**
+   * Get plans by brand name
+   */
+  async getPlansByBrandName(brandName: string): Promise<Plan[]> {
+    // Get brand id from brand name 
+    const brand = await this.brandRepository.findByName(brandName);
+    if (!brand) return [];
+
+    return await this.getPlansByBrandId(brand._id!);
   }
 
   async updateTimelineEventStatus(

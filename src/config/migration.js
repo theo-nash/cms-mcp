@@ -96,6 +96,31 @@ const contentPromises = contentItems.map(item => {
 
 await Promise.all(contentPromises);
 console.log('Content migration completed');
+
+await db.collection('brands').updateMany(
+  { 'guidelines.tone': null },
+  { $unset: { 'guidelines.tone': "" } }
+);
+await db.collection('brands').updateMany(
+  { 'guidelines.vocabulary': null },
+  { $unset: { 'guidelines.vocabulary': "" } }
+);
+await db.collection('brands').updateMany(
+  { 'guidelines.avoidedTerms': null },
+  { $unset: { 'guidelines.avoidedTerms': "" } }
+);
+await db.collection('brands').updateMany(
+  { 'guidelines.visualIdentity': null },
+  { $unset: { 'guidelines.visualIdentity': "" } }
+);
+await db.collection('brands').updateMany(
+  { 'guidelines.narratives': null },
+  { $unset: { 'guidelines.narratives': "" } }
+);
+await db.collection('brands').updateMany(
+  { 'guidelines.keyMessages': null },
+  { $unset: { 'guidelines.keyMessages': "" } }
+);
     
     console.log(`Updated ${contentResult.modifiedCount} content items with missing microPlanId`);
     

@@ -1,8 +1,8 @@
 import { Router, Request, Response, NextFunction } from "express";
 import { body, param, query } from "express-validator";
-import { ContentCreationData, ContentService } from "../../services/content.service.js";
+import { ContentService } from "../../services/content.service.js";
 import { validateRequest } from "../middleware/validate.js";
-import { ContentState, Content } from "../../models/content.model.js";
+import { ContentState, Content, ContentCreationSchemaParser, ContentUpdateSchema } from "../../models/content.model.js";
 import { sanitizeBody } from "../middleware/transform.js";
 import { transformDates } from "../middleware/transform.js";
 
@@ -295,20 +295,7 @@ router.post(
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
       // Create properly typed content creation data
-      const contentData: ContentCreationData = {
-        microPlanId: req.body.microPlanId,
-        brandId: req.body.brandId,
-        title: req.body.title,
-        content: req.body.content,
-        scheduledFor: req.body.scheduledFor ? new Date(req.body.scheduledFor) : undefined,
-        userId: req.body.userId || "default-user-id",
-        comments: req.body.comments,
-        format: req.body.format,
-        platform: req.body.platform,
-        mediaRequirements: req.body.mediaRequirements,
-        targetAudience: req.body.targetAudience,
-        keywords: req.body.keywords
-      };
+      const contentData = ContentCreationSchemaParser.parse(req.body);
 
       const content = await contentService.createContent(contentData);
       res.status(201).json(content);
@@ -381,38 +368,10 @@ router.put(
   validateRequest,
   async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      // Get current content to update state metadata properly
-      const existingContent = await contentService.getContent(req.params.id);
-      if (!existingContent) {
-        res.status(404).json({ message: "Content not found" });
-        return;
-      }
-
       // Create a sanitized update object
-      const updates: Partial<Omit<Content, "_id">> = {};
+      const updates = ContentUpdateSchema.parse(req.body);
 
-      if (req.body.title !== undefined) updates.title = req.body.title;
-      if (req.body.content !== undefined) updates.content = req.body.content;
-
-      // Handle stateMetadata updates
-      const stateMetadata = { ...existingContent.stateMetadata };
-
-      // Update updatedBy and updatedAt
-      stateMetadata.updatedBy = req.body.userId;
-      stateMetadata.updatedAt = new Date();
-
-      // Add scheduledFor to stateMetadata if provided
-      if (req.body.scheduledFor !== undefined) {
-        stateMetadata.scheduledFor = req.body.scheduledFor;
-      }
-
-      updates.stateMetadata = stateMetadata;
-
-      const content = await contentService.updateContent(
-        req.params.id,
-        updates,
-        req.body.userId
-      );
+      const content = await contentService.updateContent(updates);
 
       res.json(content);
     } catch (error) {

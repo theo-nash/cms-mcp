@@ -1,8 +1,8 @@
 import { Router, RequestHandler } from "express";
 import { body, param, query } from "express-validator";
-import { MasterPlanCreationData, MicroPlanCreationData, PlanService } from "../../services/plan.service.js";
+import { PlanService } from "../../services/plan.service.js";
 import { validateRequest } from "../middleware/validate.js";
-import { PlanType, PlanState, Plan, MasterPlan, MicroPlan } from "../../models/plan.model.js";
+import { PlanType, PlanState, Plan, MasterPlan, MicroPlan, MasterPlanCreationSchemaParser, MicroPlanCreationSchemaParser, MasterPlanCreationParams, MicroPlanCreationParams, MicroPlanUpdateParams, MasterPlanUpdateParams, MasterPlanUpdateSchemaParser, MicroPlanUpdateSchemaParser } from "../../models/plan.model.js";
 import { PlanRepository } from "../../repositories/plan.repository.js";
 import { transformDates } from "../middleware/transform.js";
 import { transformCasing } from "../middleware/transform.js";
@@ -263,40 +263,13 @@ const createPlanHandler: RequestHandler = async (req, res, next) => {
 
     if (type === PlanType.Master) {
       // Create properly typed master plan data
-      const masterPlanData: MasterPlanCreationData = {
-        campaignId: req.body.campaignId,
-        title: req.body.title,
-        dateRange: {
-          start: new Date(req.body.dateRange.start),
-          end: new Date(req.body.dateRange.end)
-        },
-        goals: req.body.goals || [],
-        targetAudience: req.body.targetAudience,
-        channels: req.body.channels || [],
-        userId: req.body.userId || "default-user-id",
-        planGoals: req.body.planGoals,
-        contentStrategy: req.body.contentStrategy,
-        timeline: req.body.timeline
-      };
+      const masterPlanData = MasterPlanCreationSchemaParser.parse(req.body);
 
       const plan = await planService.createMasterPlan(masterPlanData);
       void res.status(201).json(plan);
     } else if (type === PlanType.Micro) {
       // Create properly typed micro plan data
-      const microPlanData: MicroPlanCreationData = {
-        masterPlanId: req.body.masterPlanId,
-        title: req.body.title,
-        dateRange: {
-          start: new Date(req.body.dateRange.start),
-          end: new Date(req.body.dateRange.end)
-        },
-        goals: req.body.goals || [],
-        targetAudience: req.body.targetAudience,
-        channels: req.body.channels || [],
-        userId: req.body.userId || "default-user-id",
-        contentSeries: req.body.contentSeries,
-        performanceMetrics: req.body.performanceMetrics
-      };
+      const microPlanData = MicroPlanCreationSchemaParser.parse(req.body);
 
       const plan = await planService.createMicroPlan(microPlanData);
       void res.status(201).json(plan);
@@ -462,44 +435,22 @@ const updatePlanHandler: RequestHandler = async (req, res, next) => {
     }
 
     // Create update object with common fields
-    const updates: Partial<Omit<Plan, "_id">> = {};
-
-    // Common fields for both plan types
-    if (req.body.title !== undefined) updates.title = req.body.title;
-    if (req.body.dateRange !== undefined) {
-      updates.dateRange = {
-        start: new Date(req.body.dateRange.start),
-        end: new Date(req.body.dateRange.end)
-      };
-    }
-    if (req.body.goals !== undefined) updates.goals = req.body.goals;
-    if (req.body.targetAudience !== undefined) updates.targetAudience = req.body.targetAudience;
-    if (req.body.channels !== undefined) updates.channels = req.body.channels;
-    if (req.body.state !== undefined) updates.state = req.body.state as PlanState;
-    if (req.body.isActive !== undefined) updates.isActive = req.body.isActive;
+    let updates: MicroPlanUpdateParams | MasterPlanUpdateParams | null = null;
 
     // Type-specific fields
     if (existingPlan.type === PlanType.Master) {
-      // Create a master plan specific update object
-      const masterUpdates = updates as Partial<Omit<MasterPlan, "_id">>;
-
-      if (req.body.planGoals !== undefined) masterUpdates.planGoals = req.body.planGoals;
-      if (req.body.contentStrategy !== undefined) masterUpdates.contentStrategy = req.body.contentStrategy;
-      if (req.body.timeline !== undefined) masterUpdates.timeline = req.body.timeline;
+      updates = MasterPlanUpdateSchemaParser.parse(req.body);
     } else if (existingPlan.type === PlanType.Micro) {
-      // Create a micro plan specific update object
-      const microUpdates = updates as Partial<Omit<MicroPlan, "_id">>;
+      updates = MicroPlanUpdateSchemaParser.parse(req.body);
+    }
 
-      if (req.body.contentSeries !== undefined) microUpdates.contentSeries = req.body.contentSeries;
-      if (req.body.performanceMetrics !== undefined) microUpdates.performanceMetrics = req.body.performanceMetrics;
+    if (!updates) {
+      void res.status(400).json({ message: "Invalid update data" });
+      return;
     }
 
     // Update the plan
-    const updatedPlan = await planService.updatePlan(
-      req.params.id,
-      updates,
-      req.body.userId || "default-user-id"
-    );
+    const updatedPlan = await planService.updatePlan(updates);
 
     if (!updatedPlan) {
       void res.status(404).json({ message: "Plan not found" });

@@ -10,90 +10,51 @@ export class CampaignRepository extends BaseRepository<Campaign> {
     await this.initCollection();
     const result = await this.collection.findOne({ name });
     if (!result) return null;
-    return this.validate({
+
+    const document = {
       ...result,
-      _id: this.fromObjectId(result._id),
-    });
+      _id: this.fromObjectId(result._id)
+    };
+
+    return this.validate(document);
   }
 
   /**
    * Find campaigns by brand ID
    */
   async findByBrandId(brandId: string): Promise<Campaign[]> {
-    await this.initCollection();
-    const results = await this.collection.find({ brandId }).toArray();
-    return results.map(result => {
-      const document = {
-        ...result,
-        _id: this.fromObjectId(result._id),
-      };
-      return this.validate(document);
-    });
+    return await this.find({ brandId })
   }
 
   /**
    * Find active campaigns for a brand
    */
   async findActiveCampaigns(brandId: string): Promise<Campaign[]> {
-    await this.initCollection();
-    const results = await this.collection.find({
+    return await this.find({
       brandId,
       status: CampaignStatus.Active
-    }).toArray();
-    return results.map(result => {
-      const document = {
-        ...result,
-        _id: this.fromObjectId(result._id),
-      };
-      return this.validate(document);
-    });
+    })
   }
 
   /**
    * Find campaigns by date range
    */
   async findByDateRange(startDate: Date, endDate: Date): Promise<Campaign[]> {
-    await this.initCollection();
-    const results = await this.collection.find({
+    return await this.find({
       startDate: { $gte: startDate },
       endDate: { $lte: endDate }
-    }).toArray();
-    return results.map(result => {
-      const document = {
-        ...result,
-        _id: this.fromObjectId(result._id),
-      };
-      return this.validate(document);
     });
   }
 
   async findByGoalType(goalType: string): Promise<Campaign[]> {
-    await this.initCollection();
-    const results = await this.collection.find({
+    return await this.find({
       "goals.type": goalType
-    }).toArray();
-
-    return results.map(result => {
-      const document = {
-        ...result,
-        _id: this.fromObjectId(result._id)
-      };
-      return this.validate(document);
     });
   }
 
   async findByAudienceSegment(segment: string): Promise<Campaign[]> {
-    await this.initCollection();
-    const results = await this.collection.find({
+    return await this.find({
       "audience.segment": segment
-    }).toArray();
-
-    return results.map(result => {
-      const document = {
-        ...result,
-        _id: this.fromObjectId(result._id)
-      };
-      return this.validate(document);
     });
   }
 
@@ -101,22 +62,13 @@ export class CampaignRepository extends BaseRepository<Campaign> {
     const future = new Date();
     future.setDate(future.getDate() + daysAhead);
 
-    await this.initCollection();
-    const results = await this.collection.find({
+    return await this.find({
       "majorMilestones": {
         $elemMatch: {
           date: { $gte: new Date(), $lte: future },
           status: "pending"
         }
       }
-    }).toArray();
-
-    return results.map(result => {
-      const document = {
-        ...result,
-        _id: this.fromObjectId(result._id)
-      };
-      return this.validate(document);
     });
   }
 }

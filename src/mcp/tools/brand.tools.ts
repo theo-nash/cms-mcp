@@ -1,6 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { BrandService } from "../../services/brand.service.js";
+import { json } from "body-parser";
+import { cleanNulls } from "../../utils/merge.js";
+import { BaseBrandUpdateSchema, BrandCreationSchema, BrandUpdateSchema } from "../../models/brand.model.js";
 
 export function registerBrandTools(server: McpServer) {
     const brandService = new BrandService();
@@ -8,35 +11,10 @@ export function registerBrandTools(server: McpServer) {
     // Create brand
     server.tool(
         "createBrand",
-        "Create a new brand with within the CMS with Twitter credentials and optional brand guidelines. Use this to onboard a new brand into the CMS, including its social media configuration and content standards.",
-        {
-            name: z.string(),
-            description: z.string(),
-            guidelines: z.object({
-                tone: z.array(z.string()),
-                vocabulary: z.array(z.string()),
-                avoided_terms: z.array(z.string()),
-                visual_identity: z.object({
-                    primary_color: z.string().optional(),
-                    secondary_color: z.string().optional()
-                }).optional()
-            }).optional()
-        },
+        "Creates a new brand entity in the CMS with optional brand guidelines. Use this when onboarding a new brand to establish its identity, tone, vocabulary, and visual standards. A brand serves as the foundation for all content, campaigns, and social media publications related to that entity. Required parameters: name and description. Optional: detailed guidelines including tone, vocabulary, terms to avoid, visual identity, narratives, and key messages.",
+        BrandCreationSchema.shape,
         async (params) => {
-            // Transform params to match service interface
-            const brandData = {
-                name: params.name,
-                description: params.description,
-                guidelines: params.guidelines ? {
-                    tone: params.guidelines.tone,
-                    vocabulary: params.guidelines.vocabulary,
-                    avoidedTerms: params.guidelines.avoided_terms,
-                    visualIdentity: params.guidelines.visual_identity ? {
-                        primaryColor: params.guidelines.visual_identity.primary_color,
-                        secondaryColor: params.guidelines.visual_identity.secondary_color
-                    } : undefined
-                } : undefined
-            };
+            const brandData = BrandCreationSchema.parse(params);
 
             // Create the brand
             const result = await brandService.createBrand(brandData);
@@ -45,11 +23,23 @@ export function registerBrandTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Brand created: ${params.name} (ID: ${result._id})`
+                        text: `Brand "${params.name}" successfully created with ID: ${result._id}`
+                    },
+                    {
+                        type: "text",
+                        text: `The brand has ${result.guidelines ? 'guidelines defined for tone, vocabulary, and avoided terms' : 'no guidelines yet defined'}. You can reference this brand in other operations using either its ID or name.`
+                    },
+                    {
+                        type: "text",
+                        text: `Next steps: Create a campaign for this brand, develop content plans, or create standalone content.`
                     }
                 ],
                 brand_id: result._id,
-                name: result.name
+                name: result.name,
+                description: result.description,
+                created_at: result.created_at.toISOString(),
+                has_guidelines: !!result.guidelines,
+                guideline_elements: result.guidelines ? Object.keys(result.guidelines) : []
             };
         }
     );
@@ -57,22 +47,28 @@ export function registerBrandTools(server: McpServer) {
     // Get brand
     server.tool(
         "getBrand",
-        "Retrieve details for a specific brand from the CMS by its ID, including its description and content guidelines. Use this to understand the brand's identity and standards.",
+        "Retrieve details for a specific brand from the CMS by its ID or name, including its description and content guidelines. Use this to understand the brand's identity and standards.",
         {
-            brand_id: z.string()
+            brandId: z.string().optional(),
+            brandName: z.string().optional()
         },
         async (params) => {
-            const brand = await brandService.getBrand(params.brand_id);
+            let brand;
+            if (params.brandId) {
+                brand = await brandService.getBrand(params.brandId);
+            } else if (params.brandName) {
+                brand = await brandService.getBrandByName(params.brandName);
+            }
 
-            if (!brand) {
-                throw new Error(`Brand with ID ${params.brand_id} not found`);
+            if (!brand || !brand._id) {
+                throw new Error(`Brand with ID ${params.brandId} not found`);
             }
 
             return {
                 content: [
                     {
                         type: "text",
-                        text: `Brand details retrieved: ${brand.name} (ID: ${params.brand_id})`
+                        text: JSON.stringify(brand)
                     }
                 ],
                 brand_id: brand._id,
@@ -99,7 +95,7 @@ export function registerBrandTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Retrieved ${brands.length} brands.`
+                        text: JSON.stringify(brands)
                     }
                 ],
                 brands: brands.map(brand => ({
@@ -113,44 +109,38 @@ export function registerBrandTools(server: McpServer) {
 
     // Update brand guidelines
     server.tool(
-        "updateBrandGuidelines",
-        "Update the content guidelines for a specific brand. Use this to change tone, vocabulary, or visual identity standards for content associated with the brand.",
-        {
-            brand_id: z.string(),
-            guidelines: z.object({
-                tone: z.array(z.string()),
-                vocabulary: z.array(z.string()),
-                avoided_terms: z.array(z.string()),
-                visual_identity: z.object({
-                    primary_color: z.string().optional(),
-                    secondary_color: z.string().optional()
-                }).optional()
-            })
-        },
+        "updateBrand",
+        "Update the brand. Use this to change the brand name, description, or guidelines (tone, vocabulary, avoided terms, visual identity, narratives, key messages). Either brandId or brandName must be provided (but cannot be modified).",
+        BaseBrandUpdateSchema.shape,
         async (params) => {
-            // Transform params to match service interface
-            const guidelines = {
-                tone: params.guidelines.tone,
-                vocabulary: params.guidelines.vocabulary,
-                avoidedTerms: params.guidelines.avoided_terms,
-                visualIdentity: params.guidelines.visual_identity ? {
-                    primaryColor: params.guidelines.visual_identity.primary_color,
-                    secondaryColor: params.guidelines.visual_identity.secondary_color
-                } : undefined
-            };
+            const updateData = BrandUpdateSchema.parse(params);
 
-            // Update the brand guidelines
-            const result = await brandService.updateBrandGuidelines(params.brand_id, guidelines);
+            // Find the brand
+            let brand;
+            if (updateData.brandId) {
+                brand = await brandService.getBrand(updateData.brandId);
+            } else if (updateData.brandName) {
+                brand = await brandService.getBrandByName(updateData.brandName);
+            }
+
+            brand = cleanNulls(brand);
+
+            if (!brand || !brand._id) {
+                throw new Error(`Brand not found`);
+            }
+
+            // Update the brand
+            const result = await brandService.updateBrand(brand._id, updateData);
 
             if (!result) {
-                throw new Error(`Brand with ID ${params.brand_id} not found`);
+                throw new Error(`Brand with ID ${updateData.brandId} not found`);
             }
 
             return {
                 content: [
                     {
                         type: "text",
-                        text: `Brand guidelines updated for: ${result.name} (ID: ${params.brand_id})`
+                        text: `Brand guidelines updated for: ${result.name} (ID: ${brand._id})`
                     }
                 ],
                 brand_id: result._id,

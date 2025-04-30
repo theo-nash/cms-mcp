@@ -1,9 +1,10 @@
-import { Content, ContentState } from "../models/content.model.js";
+import { Content, ContentCreationParams, ContentCreationSchemaParser, ContentState, ContentUpdateParams } from "../models/content.model.js";
 import { ContentRepository } from "../repositories/content.repository.js";
 import { PlanRepository } from "../repositories/plan.repository.js";
 import { BrandRepository } from "../repositories/brand.repository.js";
 import { CampaignRepository } from "../repositories/campaign.repository.js";
 import { PlanType, MicroPlan, MasterPlan } from "../models/plan.model.js";
+import { ensureDate } from "../utils/date.utils.js";
 
 export interface ContentCreationData {
     microPlanId?: string;
@@ -65,9 +66,8 @@ export class ContentService {
     /**
      * Create new content
      */
-    async createContent(data: ContentCreationData): Promise<Content> {
-        // Add default user id if not provided
-        data.userId = data.userId || "default-user-id";
+    async createContent(data: ContentCreationParams): Promise<Content> {
+        data = ContentCreationSchemaParser.parse(data);
 
         // Validate that either microPlanId or brandId is provided
         if (!data.microPlanId && !data.brandId) {
@@ -93,23 +93,18 @@ export class ContentService {
         // Create state metadata
         const stateMetadata = {
             updatedAt: new Date(),
-            updatedBy: data.userId,
-            comments: data.comments || "",
+            updatedBy: "system-user",
+            comments: "",
             ...(data.scheduledFor && { scheduledFor: data.scheduledFor })
         };
 
+        // Strip scheduledFor from data if it is provided (been moved to stateMetadata)
+        const { scheduledFor, ...rest } = data;
+
         // Create the content with initial state
         return await this.contentRepository.create({
-            microPlanId: data.microPlanId || "",
-            brandId: data.brandId || "",
-            title: data.title,
-            content: data.content,
+            ...rest,
             state: ContentState.Draft,
-            format: data.format,
-            platform: data.platform,
-            mediaRequirements: data.mediaRequirements,
-            targetAudience: data.targetAudience,
-            keywords: data.keywords,
             stateMetadata
         });
     }
@@ -124,25 +119,33 @@ export class ContentService {
     /**
      * Update content
      */
-    async updateContent(contentId: string, updates: any, userId: string): Promise<Content | null> {
+    async updateContent(updates: ContentUpdateParams): Promise<Content | null> {
         // Get current content
-        const content = await this.contentRepository.findById(contentId);
-        if (!content) return null;
+        const content = await this.contentRepository.findById(updates.content_id);
+        if (!content) {
+            throw new Error(`Content with ID ${updates.content_id} not found`);
+        };
 
-        // Only allow updates if content is in Draft state
-        if (content.state !== ContentState.Draft) {
-            throw new Error("Can only update content in Draft state");
+        // Only allow updates if content is not in Published state
+        if (content.state === ContentState.Published) {
+            throw new Error("Can only update content in Draft or Ready state");
         }
 
         // Update state metadata
         const stateMetadata = {
             ...content.stateMetadata,
             updatedAt: new Date(),
-            updatedBy: userId
+            updatedBy: "system-user",
+            scheduledFor: updates.scheduledFor ? ensureDate(updates.scheduledFor, 'scheduledFor') : content.stateMetadata.scheduledFor
         };
 
+        // update media requirements
+        if (updates.mediaRequirements) {
+            content.mediaRequirements = updates.mediaRequirements;
+        }
+
         // Apply updates
-        return await this.contentRepository.update(contentId, {
+        return await this.contentRepository.update(updates.content_id, {
             ...updates,
             stateMetadata
         });
@@ -289,11 +292,11 @@ export class ContentService {
         const contentText = content.content.toLowerCase();
 
         // Check for avoided terms
-        const foundAvoidedTerms = guidelines.avoidedTerms.filter(term =>
+        const foundAvoidedTerms = guidelines && guidelines.avoidedTerms && guidelines.avoidedTerms.filter(term =>
             contentText.includes(term.toLowerCase())
         );
 
-        if (foundAvoidedTerms.length > 0) {
+        if (foundAvoidedTerms && foundAvoidedTerms.length > 0) {
             throw new Error(`Content contains avoided terms: ${foundAvoidedTerms.join(', ')}`);
         }
     }

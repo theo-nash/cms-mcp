@@ -1,6 +1,9 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { CampaignService } from "../../services/campaign.service.js";
+import { BrandService } from "../../services/brand.service.js";
+import { ensureDate, formatDate, getDurationInDays } from "../../utils/date.utils.js";
+import { CampaignCreationSchema, CampaignCreationSchemaParser, CampaignUpdateSchema } from "../../models/campaign.model.js";
 
 export function registerCampaignTools(server: McpServer) {
   const campaignService = new CampaignService();
@@ -8,35 +11,48 @@ export function registerCampaignTools(server: McpServer) {
   // Create campaign
   server.tool(
     "createCampaign",
-    "Create a new campaign to organize and group related content plans and pieces.",
-    {
-      name: z.string(),
-      description: z.string(),
-      startDate: z.string().datetime(),
-      endDate: z.string().datetime(),
-      objectives: z.array(z.string()).optional(),
-    },
+    "Creates a new marketing campaign that serves as the top-level organizing unit for content plans and content pieces. A campaign represents a cohesive marketing initiative with specific objectives, timeline, and target audiences. Master plans and their associated micro plans are organized under campaigns. Required parameters: brandId or brandName, name, description, startDate, and endDate. Optional: objectives (array of campaign goals). A campaign starts in 'draft' state and can be transitioned to 'active', 'completed', and 'archived' states throughout its lifecycle.",
+    CampaignCreationSchema.shape,
     async (params) => {
-      const result = await campaignService.createCampaign({
-        name: params.name,
-        description: params.description,
-        startDate: new Date(params.startDate),
-        endDate: new Date(params.endDate),
-        objectives: params.objectives || [],
-        brandId: "default-brand-id",
-        userId: "system"
-      });
+      const campaignData = CampaignCreationSchemaParser.parse(params);
+
+      // Check for either brandId or brandName
+      if (!campaignData.brandId && !campaignData.brandName) {
+        throw new Error("Either brandId or brandName must be provided");
+      }
+
+      const result = await campaignService.createCampaign(campaignData);
+
+      const durationDays = getDurationInDays(result.startDate, result.endDate);
 
       return {
         content: [
           {
             type: "text",
-            text: `Campaign created: ${params.name} (ID: ${result._id})`,
+            text: `Campaign "${params.name}" successfully created with ID: ${result._id}`
           },
+          {
+            type: "text",
+            text: `The campaign runs from ${formatDate(result.startDate)} to ${formatDate(result.endDate)} (${durationDays} days) and is in "${result.status}" state.`
+          },
+          {
+            type: "text",
+            text: `Next steps: 1) Use createMasterPlan to create content strategies for this campaign, 2) Create micro plans under those master plans, and 3) Create and schedule content.`
+          }
         ],
         campaign_id: result._id,
         name: result.name,
+        description: result.description,
         status: result.status,
+        date_range: {
+          start: result.startDate.toISOString(),
+          end: result.endDate.toISOString()
+        },
+        duration_days: durationDays,
+        objectives: result.objectives || [],
+        brand_id: result.brandId,
+        created_at: result.created_at.toISOString(),
+        created_by: result.stateMetadata?.updatedBy || "system-user"
       };
     }
   );
@@ -60,7 +76,7 @@ export function registerCampaignTools(server: McpServer) {
         content: [
           {
             type: "text",
-            text: `Campaign details: ${campaign.name} (ID: ${campaign._id})`,
+            text: JSON.stringify(campaign)
           },
         ],
         campaign,
@@ -79,7 +95,7 @@ export function registerCampaignTools(server: McpServer) {
         content: [
           {
             type: "text",
-            text: `Retrieved ${campaigns.length} campaigns`,
+            text: JSON.stringify(campaigns)
           },
         ],
         campaigns,
@@ -90,30 +106,13 @@ export function registerCampaignTools(server: McpServer) {
   // Update campaign
   server.tool(
     "updateCampaign",
-    "Update an existing campaign's details.",
-    {
-      campaign_id: z.string(),
-      name: z.string().optional(),
-      description: z.string().optional(),
-      startDate: z.string().datetime().optional(),
-      endDate: z.string().datetime().optional(),
-      objectives: z.array(z.string()).optional(),
-      status: z.enum(["draft", "active", "completed", "archived"]).optional(),
-    },
+    "Update an existing campaign's details. Use this to change the campaign name, description, start date, end date, objectives, status, goals, audience, content mix, or major milestones.",
+    CampaignUpdateSchema.shape,
     async (params) => {
-      const updates: any = {};
-      if (params.name) updates.name = params.name;
-      if (params.description) updates.description = params.description;
-      if (params.startDate) updates.startDate = new Date(params.startDate);
-      if (params.endDate) updates.endDate = new Date(params.endDate);
-      if (params.objectives) updates.objectives = params.objectives;
-      if (params.status) updates.status = params.status;
+      const updateData = CampaignUpdateSchema.parse(params);
 
-      const result = await campaignService.updateCampaign(
-        params.campaign_id,
-        updates,
-        "system"
-      );
+      const result = await campaignService.updateCampaign(updateData);
+
       if (!result) {
         throw new Error(`Campaign with ID ${params.campaign_id} not found`);
       }
@@ -122,10 +121,45 @@ export function registerCampaignTools(server: McpServer) {
         content: [
           {
             type: "text",
-            text: `Campaign updated: ${result.name} (ID: ${result._id})`,
+            text: `Campaign "${result.name}" (ID: ${result._id}) updated successfully`
           },
         ],
         campaign: result,
+      };
+    }
+  );
+
+  server.tool(
+    "updateCampaignMilestone",
+    "Update the status of a specific milestone in a campaign.",
+    {
+      campaign_id: z.string(),
+      milestone_index: z.number().int().min(0),
+      status: z.enum(['pending', 'completed']),
+      user_id: z.string().default("system")
+    },
+    async (params) => {
+      const result = await campaignService.updateMilestoneStatus(
+        params.campaign_id,
+        params.milestone_index,
+        params.status,
+        params.user_id
+      );
+
+      if (!result) {
+        throw new Error(`Campaign with ID ${params.campaign_id} not found or milestone index is invalid`);
+      }
+
+      return {
+        content: [
+          {
+            type: "text",
+            text: `Milestone ${params.milestone_index} updated to status: ${params.status}`
+          }
+        ],
+        campaign_id: result._id,
+        milestone_description: result.majorMilestones?.[params.milestone_index]?.description || "Unknown milestone",
+        status: params.status
       };
     }
   );

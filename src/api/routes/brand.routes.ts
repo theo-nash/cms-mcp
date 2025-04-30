@@ -1,9 +1,9 @@
 import { Router, RequestHandler } from "express";
 import { body, param } from "express-validator";
-import { BrandCreationData, BrandService } from "../../services/brand.service.js";
+import { BrandService } from "../../services/brand.service.js";
 import { validateRequest } from "../middleware/validate.js";
 import { sanitizeBody, transformCasing } from "../middleware/transform.js";
-import { BrandGuidelines } from "../../models/brand.model.js";
+import { BrandUpdateSchema } from "../../models/brand.model.js";
 
 const router = Router();
 const brandService = new BrandService();
@@ -217,76 +217,7 @@ const createBrandHandler: RequestHandler = async (req, res, next) => {
 const updateBrandHandler: RequestHandler = async (req, res, next) => {
   try {
     // Create a sanitized update object instead of passing req.body directly
-    const updateData: Partial<BrandCreationData> = {};
-
-    // Only add properties that are provided in the request
-    if (req.body.name !== undefined) {
-      updateData.name = req.body.name;
-    }
-
-    if (req.body.description !== undefined) {
-      updateData.description = req.body.description;
-    }
-
-    // Transform guidelines if present to match the expected structure
-    if (req.body.guidelines) {
-      // Create guidelines with only the fields that are provided
-      const guidelines = {} as any;
-
-      if (req.body.guidelines.tone !== undefined) {
-        guidelines.tone = req.body.guidelines.tone;
-      }
-
-      if (req.body.guidelines.vocabulary !== undefined) {
-        guidelines.vocabulary = req.body.guidelines.vocabulary;
-      }
-
-      if (req.body.guidelines.avoidedTerms !== undefined) {
-        guidelines.avoidedTerms = req.body.guidelines.avoidedTerms;
-      }
-
-      if (req.body.guidelines.visualIdentity) {
-        guidelines.visualIdentity = {};
-
-        if (req.body.guidelines.visualIdentity.primaryColor !== undefined) {
-          guidelines.visualIdentity.primaryColor =
-            req.body.guidelines.visualIdentity.primaryColor;
-        }
-
-        if (req.body.guidelines.visualIdentity.secondaryColor !== undefined) {
-          guidelines.visualIdentity.secondaryColor =
-            req.body.guidelines.visualIdentity.secondaryColor;
-        }
-      }
-
-      if (req.body.guidelines.narratives) {
-        guidelines.narratives = {};
-
-        if (req.body.guidelines.narratives.elevatorPitch !== undefined) {
-          guidelines.narratives.elevatorPitch =
-            req.body.guidelines.narratives.elevatorPitch;
-        }
-
-        if (req.body.guidelines.narratives.shortNarrative !== undefined) {
-          guidelines.narratives.shortNarrative =
-            req.body.guidelines.narratives.shortNarrative;
-        }
-
-        if (req.body.guidelines.narratives.fullNarrative !== undefined) {
-          guidelines.narratives.fullNarrative =
-            req.body.guidelines.narratives.fullNarrative;
-        }
-      }
-
-      if (req.body.guidelines.keyMessages !== undefined) {
-        guidelines.keyMessages = req.body.guidelines.keyMessages;
-      }
-
-      // Only add guidelines if we have properties to update
-      if (Object.keys(guidelines).length > 0) {
-        updateData.guidelines = guidelines;
-      }
-    }
+    const updateData = BrandUpdateSchema.parse(req.body);
 
     const brand = await brandService.updateBrand(req.params.id, updateData);
     if (!brand) {

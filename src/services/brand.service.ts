@@ -1,28 +1,7 @@
-import { Brand, BrandGuidelines } from "../models/brand.model.js";
+import { Brand, BrandCreationParams, BrandGuidelines, BrandUpdateParams } from "../models/brand.model.js";
 import { BrandRepository } from "../repositories/brand.repository.js";
-
-export interface BrandCreationData {
-    name: string;
-    description: string;
-    guidelines?: {
-        tone: string[];
-        vocabulary: string[];
-        avoidedTerms: string[];
-        visualIdentity?: {
-            primaryColor?: string;
-            secondaryColor?: string;
-        };
-        narratives?: {
-            elevatorPitch?: string;
-            shortNarrative?: string;
-            fullNarrative?: string;
-        };
-        keyMessages?: Array<{
-            audienceSegment: string;
-            message: string;
-        }>;
-    };
-}
+import { deepMergeArrays, cleanNulls } from "../utils/merge.js";
+import { deepMerge } from "../utils/merge.js";
 
 export class BrandService {
     private brandRepository: BrandRepository;
@@ -34,7 +13,7 @@ export class BrandService {
     /**
      * Create a new brand
      */
-    async createBrand(data: BrandCreationData): Promise<Brand> {
+    async createBrand(data: BrandCreationParams): Promise<Brand> {
         // Check if brand with same name already exists
         const existingBrand = await this.brandRepository.findByName(data.name);
         if (existingBrand) {
@@ -42,79 +21,113 @@ export class BrandService {
         }
 
         // Create the brand
-        return await this.brandRepository.create(data);
+        return await this.brandRepository.create(data as any);
     }
 
     /**
      * Get brand by ID
      */
     async getBrand(brandId: string): Promise<Brand | null> {
-        return await this.brandRepository.findById(brandId);
+        const brand = await this.brandRepository.findById(brandId);
+        if (!brand) return null;
+        return brand;
     }
 
     /** 
      * Get brand by name
      */
     async getBrandByName(name: string): Promise<Brand | null> {
-        return await this.brandRepository.findByName(name);
+        const brand = await this.brandRepository.findByName(name);
+        if (!brand) return null;
+        return brand;
     }
 
     /**
      * Update brand
      */
     // In brand.service.ts
-    async updateBrand(brandId: string, updates: Partial<BrandCreationData>): Promise<Brand | null> {
-        // If updating guidelines, handle the merge specially
-        if (updates.guidelines) {
-            const brand = await this.getBrand(brandId);
-            if (!brand) return null;
+    async updateBrand(brandId: string, updates: Partial<BrandUpdateParams>): Promise<Brand | null> {
+        // Ensure the existing brand is found
+        const brand = await this.getBrand(brandId);
+        if (!brand) {
+            throw new Error(`Brand with ID "${brandId}" not found`);
+        }
 
-            // If brand already has guidelines, merge them
-            if (brand.guidelines) {
-                // Create merged guidelines object with proper property handling
-                updates.guidelines = {
-                    // Use new values if provided, otherwise keep existing values
-                    tone: updates.guidelines.tone ?? brand.guidelines.tone ?? [],
-                    vocabulary: updates.guidelines.vocabulary ?? brand.guidelines.vocabulary ?? [],
-                    avoidedTerms: updates.guidelines.avoidedTerms ?? brand.guidelines.avoidedTerms ?? [],
-
-                    // Handle nested visualIdentity object
-                    visualIdentity: updates.guidelines.visualIdentity
-                        ? {
-                            ...(brand.guidelines.visualIdentity || {}),
-                            ...updates.guidelines.visualIdentity
-                        }
-                        : brand.guidelines.visualIdentity,
-
-                    // Handle nested narratives object
-                    narratives: updates.guidelines.narratives
-                        ? {
-                            ...(brand.guidelines.narratives || {}),
-                            ...updates.guidelines.narratives
-                        }
-                        : brand.guidelines.narratives,
-
-                    // Handle keyMessages array
-                    keyMessages: updates.guidelines.keyMessages ?? brand.guidelines.keyMessages
-                };
+        // Check for name uniqueness if updating name
+        if (updates.brandName && updates.brandName !== brand.name) {
+            const existingBrand = await this.brandRepository.findByName(updates.brandName);
+            if (existingBrand && existingBrand._id !== brandId) {
+                throw new Error(`Brand with name "${updates.brandName}" already exists`);
             }
         }
 
-        return await this.brandRepository.update(brandId, updates);
+        // Create a copy of updates to work with
+        const processedUpdates = { ...updates };
+
+        // Special handling for guidelines
+        if (updates.guidelines) {
+            const existingGuidelines = cleanNulls(brand.guidelines || {
+                tone: [],
+                vocabulary: [],
+                avoidedTerms: [],
+                visualIdentity: {},
+                narratives: {},
+                keyMessages: []
+            });
+
+            // Properly merge, keeping existing data when updates don't provide a value
+            processedUpdates.guidelines = {
+                // For arrays, use updates only if defined
+                tone: updates.guidelines.tone !== undefined
+                    ? updates.guidelines.tone
+                    : existingGuidelines.tone,
+
+                vocabulary: updates.guidelines.vocabulary !== undefined
+                    ? updates.guidelines.vocabulary
+                    : existingGuidelines.vocabulary,
+
+                avoidedTerms: updates.guidelines.avoidedTerms !== undefined
+                    ? updates.guidelines.avoidedTerms
+                    : existingGuidelines.avoidedTerms,
+
+                // Deep merge nested objects
+                visualIdentity: updates.guidelines.visualIdentity
+                    ? deepMerge(existingGuidelines.visualIdentity || {}, updates.guidelines.visualIdentity)
+                    : existingGuidelines.visualIdentity,
+
+                narratives: updates.guidelines.narratives
+                    ? deepMerge(existingGuidelines.narratives || {}, updates.guidelines.narratives)
+                    : existingGuidelines.narratives,
+
+                // Merge arrays of objects using audienceSegment as key
+                keyMessages: updates.guidelines.keyMessages
+                    ? deepMergeArrays(
+                        existingGuidelines.keyMessages || [],
+                        updates.guidelines.keyMessages,
+                        'audienceSegment'
+                    )
+                    : existingGuidelines.keyMessages
+            };
+        }
+
+        return await this.brandRepository.update(brandId, processedUpdates as any);
     }
 
     /**
      * Get all brands
      */
     async getAllBrands(): Promise<Brand[]> {
-        return await this.brandRepository.find({});
+        const brands = await this.brandRepository.find({});
+        return brands.map(cleanNulls);
     }
 
     /**
      * Update brand guidelines
      */
     async updateBrandGuidelines(brandId: string, guidelines: BrandGuidelines): Promise<Brand | null> {
-        return await this.brandRepository.update(brandId, { guidelines });
+        const brand = await this.brandRepository.update(brandId, { guidelines });
+        if (!brand) return null;
+        return cleanNulls(brand);
     }
 
     async addBrandKeyMessage(
@@ -139,7 +152,9 @@ export class BrandService {
         guidelines.keyMessages = keyMessages;
 
         // Update the brand
-        return await this.brandRepository.update(brandId, { guidelines });
+        const updatedBrand = await this.brandRepository.update(brandId, { guidelines });
+        if (!updatedBrand) return null;
+        return cleanNulls(updatedBrand);
     }
 
 }
