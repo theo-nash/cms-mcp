@@ -1,5 +1,5 @@
 import { BaseRepository } from "./base.repository.js";
-import { Plan, PlanSchema, PlanState, PlanType, MasterPlan, MicroPlan, MasterPlanSchema, MicroPlanSchema } from "../models/plan.model.js";
+import { Plan, PlanSchema, PlanState, PlanType, MasterPlan, MicroPlan, MasterPlanSchema, MicroPlanSchema, MasterPlanUpdateSchema } from "../models/plan.model.js";
 import { deepMerge, deepMergeArrays, toDate } from "../utils/merge.js";
 import { create } from "domain";
 import { stripNullValues } from "../utils/nulls.js";
@@ -123,9 +123,12 @@ export class PlanRepository extends BaseRepository<Plan> {
       }
     }
 
+    console.log("processedUpdates", processedUpdates);
+
     // Strip null values from processed updates before merging
     const cleanedUpdates = stripNullValues(processedUpdates) || {};
 
+    console.log("cleanedUpdates", cleanedUpdates);
     // Create merged plan
     const planToUpdate = deepMerge(
       existingPlan,
@@ -135,30 +138,9 @@ export class PlanRepository extends BaseRepository<Plan> {
       } as unknown as Partial<typeof existingPlan>
     );
 
+    console.log("planToUpdate", planToUpdate);
     // Remove _id for update
     const { _id, ...updateData } = planToUpdate as any;
-
-    // Validate with the correct schema
-    let validatedData;
-    if (planToUpdate.type === PlanType.Master) {
-      try {
-        validatedData = MasterPlanSchema.parse(planToUpdate);
-      } catch (error) {
-        // If validation fails, strip null values and try again
-        const strippedData = stripNullValues(planToUpdate);
-        validatedData = MasterPlanSchema.parse(strippedData);
-      }
-    } else if (planToUpdate.type === PlanType.Micro) {
-      try {
-        validatedData = MicroPlanSchema.parse(planToUpdate);
-      } catch (error) {
-        // If validation fails, strip null values and try again
-        const strippedData = stripNullValues(planToUpdate);
-        validatedData = MicroPlanSchema.parse(strippedData);
-      }
-    } else {
-      validatedData = this.validate(planToUpdate);
-    }
 
     // Perform update
     await this.collection.updateOne(
@@ -166,7 +148,7 @@ export class PlanRepository extends BaseRepository<Plan> {
       { $set: updateData }
     );
 
-    return validatedData;
+    return this.findById(id);
   }
 
   /**

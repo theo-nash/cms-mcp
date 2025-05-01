@@ -69,11 +69,6 @@ export class ContentService {
     async createContent(data: ContentCreationParams): Promise<Content> {
         data = ContentCreationSchemaParser.parse(data);
 
-        // Validate that either microPlanId or brandId is provided
-        if (!data.microPlanId && !data.brandId) {
-            throw new Error("Either microPlanId or brandId must be provided");
-        }
-
         // If microPlanId is provided, verify it exists
         if (data.microPlanId) {
             const microPlan = await this.planRepository.findById(data.microPlanId);
@@ -87,6 +82,14 @@ export class ContentService {
             const brand = await this.brandRepository.findById(data.brandId);
             if (!brand) {
                 throw new Error(`Brand with ID ${data.brandId} not found`);
+            }
+        }
+
+        // if brandName is provided, verify it exists
+        if (data.brandName) {
+            const brand = await this.brandRepository.findByName(data.brandName);
+            if (!brand) {
+                throw new Error(`Brand with name ${data.brandName} not found`);
             }
         }
 

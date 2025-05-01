@@ -9,11 +9,28 @@ export function registerPlanTools(server: McpServer) {
     const planService = new PlanService();
     const campaignService = new CampaignService();
 
+    // Plan date fields
+    const planDateFields = z.object({
+        dateRange: z.object({
+            start: z.coerce.date().describe("When the plan begins"),
+            end: z.coerce.date().describe("When the plan ends")
+        }).describe("Date range for the plan's execution"),
+    });
+
+    const masterPlanDateFields = planDateFields.extend({
+        timeline: z.array(z.object({
+            date: z.coerce.date().describe("Date for this timeline event"),
+            description: z.string().describe("Description of the timeline event"),
+            type: z.string().describe("Type of event (e.g., launch, release, review)"),
+            status: z.enum(["pending", "in-progress", "completed"]).default("pending")
+                .describe("Current status of this timeline event")
+        })).optional().describe("Detailed timeline of plan execution")
+    });
     // Create master plan
     server.tool(
         "createMasterPlan",
         "Creates a master plan for a campaign that serves as the high-level content strategy. Master plans organize content objectives, define target audiences, specify distribution channels, and establish timelines. Multiple micro plans can be created under a master plan.Either campaignName or campaignId must be provided.",
-        MasterPlanCreationSchema.shape,
+        MasterPlanCreationSchema.merge(masterPlanDateFields).shape,
         async (params) => {
             const planData = MasterPlanCreationSchemaParser.parse(params);
 
@@ -42,7 +59,7 @@ export function registerPlanTools(server: McpServer) {
                 title: result.title,
                 type: result.type,
                 state: result.state,
-                campaign_id: campaign?._id,
+                campaignId: campaign?._id,
                 campaign_name: campaign?.name,
                 date_range: {
                     start: ensureDate(result.dateRange.start, 'date_range.start'),
@@ -60,7 +77,7 @@ export function registerPlanTools(server: McpServer) {
     server.tool(
         "createMicroPlan",
         "Create a new micro plan under a master plan. Use this to define specific content pieces or initiatives that support the master plan's goals.  Either masterPlanId or masterPlanName must be provided.",
-        MicroPlanCreationSchema.shape,
+        MicroPlanCreationSchema.merge(planDateFields).shape,
         async (params) => {
             const planData = MicroPlanCreationSchemaParser.parse(params);
 
@@ -190,7 +207,7 @@ export function registerPlanTools(server: McpServer) {
     server.tool(
         "updateMasterPlan",
         "Update the details of an existing master plan. Use this to modify the plan's title, schedule, goals, target audience, channels, timeline, content strategy, state, and isActive.  Either plan_id or plan_name must be provided.",
-        MasterPlanUpdateSchema.shape,
+        MasterPlanUpdateSchema.merge(masterPlanDateFields.partial()).shape,
         async (params) => {
             const updateData = MasterPlanUpdateSchemaParser.parse(params);
 
@@ -216,7 +233,7 @@ export function registerPlanTools(server: McpServer) {
     server.tool(
         "updateMicroPlan",
         "Update the details of an existing micro plan. Use this to modify the plan's title, schedule, goals, target audience, channels, timeline, content series, and performance metrics, state, and isActive.  Either plan_id or plan_name must be provided.",
-        MicroPlanUpdateSchema.shape,
+        MicroPlanUpdateSchema.merge(planDateFields.partial()).shape,
         async (params) => {
             const updateData = MicroPlanUpdateSchemaParser.parse(params);
 
@@ -362,14 +379,14 @@ export function registerPlanTools(server: McpServer) {
         "getMasterPlansByCampaign",
         "Get all master plans associated with a campaign.",
         {
-            campaign_id: z.string().optional(),
+            campaignId: z.string().optional(),
             campaign_name: z.string().optional()
         },
         async (params) => {
             let campaignId: string | undefined = undefined;
 
-            if (params.campaign_id) {
-                campaignId = params.campaign_id;
+            if (params.campaignId) {
+                campaignId = params.campaignId;
             } else if (params.campaign_name) {
                 const campaign = await campaignService.getCampaignByName(params.campaign_name);
                 if (!campaign || !campaign._id) {
@@ -379,7 +396,7 @@ export function registerPlanTools(server: McpServer) {
             }
 
             if (!campaignId) {
-                throw new Error("Either campaign_id or campaign_name must be provided");
+                throw new Error("Either campaignId or campaign_name must be provided");
             }
 
             const masterPlans = await planService.getMasterPlansByCampaignId(campaignId);

@@ -46,17 +46,27 @@ export class BrandService {
      * Update brand
      */
     // In brand.service.ts
-    async updateBrand(brandId: string, updates: Partial<BrandUpdateParams>): Promise<Brand | null> {
+    async updateBrand(updates: Partial<BrandUpdateParams>): Promise<Brand | null> {
         // Ensure the existing brand is found
-        const brand = await this.getBrand(brandId);
-        if (!brand) {
-            throw new Error(`Brand with ID "${brandId}" not found`);
+        let brand: Brand | null = null;
+        if (updates.brandId) {
+            brand = await this.getBrand(updates.brandId);
+            if (!brand) {
+                throw new Error(`Brand with ID "${updates.brandId}" not found`);
+            }
+        } else if (updates.brandName) {
+            brand = await this.getBrandByName(updates.brandName);
+            if (!brand) {
+                throw new Error(`Brand with name "${updates.brandName}" not found`);
+            }
+        } else {
+            throw new Error("Either brandId or brandName must be provided");
         }
 
         // Check for name uniqueness if updating name
         if (updates.brandName && updates.brandName !== brand.name) {
             const existingBrand = await this.brandRepository.findByName(updates.brandName);
-            if (existingBrand && existingBrand._id !== brandId) {
+            if (existingBrand && existingBrand._id !== updates.brandId) {
                 throw new Error(`Brand with name "${updates.brandName}" already exists`);
             }
         }
@@ -106,11 +116,15 @@ export class BrandService {
                         updates.guidelines.keyMessages,
                         'audienceSegment'
                     )
-                    : existingGuidelines.keyMessages
+                    : existingGuidelines.keyMessages,
+
+                marketingPlan: updates.guidelines.marketingPlan
+                    ? updates.guidelines.marketingPlan
+                    : existingGuidelines.marketingPlan
             };
         }
 
-        return await this.brandRepository.update(brandId, processedUpdates as any);
+        return await this.brandRepository.update(brand._id!, processedUpdates as any);
     }
 
     /**

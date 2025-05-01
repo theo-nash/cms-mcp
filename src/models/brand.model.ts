@@ -18,7 +18,8 @@ export const BrandGuidelinesSchema = z.object({
     keyMessages: z.array(z.object({
         audienceSegment: z.string().describe("Target audience segment for this message"),
         message: z.string().describe("Key message for this specific audience segment")
-    })).optional().describe("Key messages tailored to specific audience segments")
+    })).optional().describe("Key messages tailored to specific audience segments"),
+    marketingPlan: z.string().optional().describe("Complete marketing plan for the brand")
 });
 
 // Base Brand Schema

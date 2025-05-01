@@ -342,9 +342,9 @@ export abstract class BaseRepository<T extends Document> {
 
         // Validate and strip nulls before saving
         const validatedData = this.validate(dataWithTimestamps as unknown as T);
-        const cleanedData = stripNullValues(validatedData) as any;
+        // const cleanedData = stripNullValues(validatedData) as any;
 
-        const result = await this.collection.insertOne(cleanedData);
+        const result = await this.collection.insertOne(validatedData);
 
         return {
             ...validatedData,

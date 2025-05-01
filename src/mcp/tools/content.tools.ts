@@ -13,17 +13,21 @@ export function registerContentTools(server: McpServer) {
     const planService = new PlanService();
     const campaignService = new CampaignService();
 
+    const contentDateFields = z.object({
+        scheduledFor: z.coerce.date().describe("When the content is scheduled to be published (optional)  Format: ISO 8601"),
+    });
+
     // Create content
     server.tool(
         "createContent",
-        "Creates a new content item that can be scheduled and published to social media. Content must be associated with either a micro plan (recommended for campaign-driven content) or directly with a brand (for standalone content). The content starts in 'draft' state and can be transitioned to 'ready' and then 'published' states. Required parameters: title, content text, and user_id. You must also provide either micro_plan_id or brandName to establish the content's association. Optional parameters: format, platform, media_requirements, target_audience, keywords, scheduled_for, comments.",
-        ContentCreationSchema.shape,
+        "Creates a new content item that can be scheduled and published to social media. Content must be associated with either a micro plan (recommended for campaign-driven content) or directly with a brand (for standalone content). The content starts in 'draft' state and can be transitioned to 'ready' and then 'published' states. Required parameters: title, content text. You must also provide either microPlanId or brandName (or brandId) to establish the content's association. Optional parameters: format, platform, mediaRequirements, targetAudience, keywords, scheduledFor.",
+        ContentCreationSchema.merge(contentDateFields).shape,
         async (params) => {
             const contentData = ContentCreationSchemaParser.parse(params);
 
-            // Validate that either micro_plan_id or brand_id is provided
+            // Validate that either microPlanId or brand_id is provided
             if (!contentData.microPlanId && !contentData.brandName) {
-                throw new Error("Either micro_plan_id or brandName must be provided");
+                throw new Error("Either microPlanId or brandName must be provided");
             }
 
             const result = await contentService.createContent(contentData);
@@ -57,7 +61,7 @@ export function registerContentTools(server: McpServer) {
     server.tool(
         "updateContent",
         "Updates an existing content item. You can update the content text, format, platform, media requirements, target audience, keywords, scheduled for, or comments. Only updates to the content text are allowed if the content is in 'draft' state.",
-        ContentUpdateSchema.shape,
+        ContentUpdateSchema.merge(contentDateFields.partial()).shape,
         async (params) => {
             const contentData = ContentUpdateSchema.parse(params);
 
@@ -87,7 +91,7 @@ export function registerContentTools(server: McpServer) {
         "Schedule a content item for publication at a specific date and time.",
         {
             content_id: z.string(),
-            publish_at: z.string().datetime()
+            publish_at: z.coerce.date().describe("When the content is scheduled to be published (Format: ISO 8601)")
         },
         async (params) => {
             const publishAt = ensureDate(params.publish_at, 'publish_at');
@@ -206,14 +210,14 @@ export function registerContentTools(server: McpServer) {
         "getContentByCampaign",
         "Get all content associated with a campaign by retrieving content from all its master plans.",
         {
-            campaign_id: z.string().optional(),
+            campaignId: z.string().optional(),
             campaign_name: z.string().optional()
         },
         async (params) => {
             let campaignId: string | undefined = undefined;
 
-            if (params.campaign_id) {
-                campaignId = params.campaign_id;
+            if (params.campaignId) {
+                campaignId = params.campaignId;
             } else if (params.campaign_name) {
                 const campaign = await campaignService.getCampaignByName(params.campaign_name);
                 if (!campaign || !campaign._id) {
@@ -223,7 +227,7 @@ export function registerContentTools(server: McpServer) {
             }
 
             if (!campaignId) {
-                throw new Error("Either campaign_id or campaign_name must be provided");
+                throw new Error("Either campaignId or campaign_name must be provided");
             }
 
             const content = await contentService.getContentByCampaignId(campaignId);

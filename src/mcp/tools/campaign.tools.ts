@@ -1,18 +1,31 @@
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { z } from "zod";
+import { z, ZodRawShape } from "zod";
 import { CampaignService } from "../../services/campaign.service.js";
-import { BrandService } from "../../services/brand.service.js";
-import { ensureDate, formatDate, getDurationInDays } from "../../utils/date.utils.js";
+import { formatDate, getDurationInDays } from "../../utils/date.utils.js";
 import { CampaignCreationSchema, CampaignCreationSchemaParser, CampaignUpdateSchema } from "../../models/campaign.model.js";
+import { McpSchemaBuilder } from "../../utils/mcp-schema.js";
+import { zodToJsonSchema } from "zod-to-json-schema";
+import { ListToolsRequestSchema, Tool } from "@modelcontextprotocol/sdk/types.js";
 
 export function registerCampaignTools(server: McpServer) {
   const campaignService = new CampaignService();
+
+  const campaignDateFields = z.object({
+    startDate: z.coerce.date().describe("Start date of the campaign (ISO 8601 format)"),
+    endDate: z.coerce.date().describe("End date of the campaign (ISO 8601 format)"),
+    majorMilestones: z.array(z.object({
+      date: z.coerce.date().describe("Target date for this milestone (optional)  Format: ISO 8601"),
+      description: z.string().describe("Description of what this milestone represents"),
+      status: z.enum(["pending", "completed"]).default("pending")
+        .describe("Current status of this milestone")
+    })).default([]).describe("Major campaign milestones with dates and completion status"),
+  });
 
   // Create campaign
   server.tool(
     "createCampaign",
     "Creates a new marketing campaign that serves as the top-level organizing unit for content plans and content pieces. A campaign represents a cohesive marketing initiative with specific objectives, timeline, and target audiences. Master plans and their associated micro plans are organized under campaigns. Required parameters: brandId or brandName, name, description, startDate, and endDate. Optional: objectives (array of campaign goals). A campaign starts in 'draft' state and can be transitioned to 'active', 'completed', and 'archived' states throughout its lifecycle.",
-    CampaignCreationSchema.shape,
+    CampaignCreationSchema.merge(campaignDateFields).shape,
     async (params) => {
       const campaignData = CampaignCreationSchemaParser.parse(params);
 
@@ -107,7 +120,7 @@ export function registerCampaignTools(server: McpServer) {
   server.tool(
     "updateCampaign",
     "Update an existing campaign's details. Use this to change the campaign name, description, start date, end date, objectives, status, goals, audience, content mix, or major milestones.",
-    CampaignUpdateSchema.shape,
+    CampaignUpdateSchema.merge(campaignDateFields.partial()).shape,
     async (params) => {
       const updateData = CampaignUpdateSchema.parse(params);
 

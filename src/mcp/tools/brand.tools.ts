@@ -4,6 +4,8 @@ import { BrandService } from "../../services/brand.service.js";
 import { json } from "body-parser";
 import { cleanNulls } from "../../utils/merge.js";
 import { BaseBrandUpdateSchema, BrandCreationSchema, BrandUpdateSchema } from "../../models/brand.model.js";
+import { Tool } from "@modelcontextprotocol/sdk/types.js";
+import { McpSchemaBuilder } from "../../utils/mcp-schema.js";
 
 export function registerBrandTools(server: McpServer) {
     const brandService = new BrandService();
@@ -130,7 +132,7 @@ export function registerBrandTools(server: McpServer) {
             }
 
             // Update the brand
-            const result = await brandService.updateBrand(brand._id, updateData);
+            const result = await brandService.updateBrand(updateData);
 
             if (!result) {
                 throw new Error(`Brand with ID ${updateData.brandId} not found`);

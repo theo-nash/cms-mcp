@@ -219,7 +219,7 @@ const updateBrandHandler: RequestHandler = async (req, res, next) => {
     // Create a sanitized update object instead of passing req.body directly
     const updateData = BrandUpdateSchema.parse(req.body);
 
-    const brand = await brandService.updateBrand(req.params.id, updateData);
+    const brand = await brandService.updateBrand(updateData);
     if (!brand) {
       void res.status(404).json({ message: "Brand not found" });
       return;

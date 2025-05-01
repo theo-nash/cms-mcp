@@ -49,17 +49,19 @@ export const ContentSchema = BaseContentSchema.extend({
 // Content Creation Schema for tools
 export const ContentCreationSchema = BaseContentSchema.omit({
     publishedMetadata: true,
-    stateMetadata: true
+    stateMetadata: true,
+    state: true,
 }).extend({
     microPlanId: z.string().optional().describe("ID of the micro plan this content belongs to (if part of a plan)"),
-    brandName: z.string().optional().describe("Name of the brand this content belongs to (for standalone content)"),
+    brandName: z.string().optional().describe("Name of the brand this content belongs to (for standalone content). Either brandName or brandId must be provided for standalone content"),
+    brandId: z.string().optional().describe("ID of the brand this content belongs to (for standalone content). Either brandName or brandId must be provided for standalone content"),
     scheduledFor: optionalDateSchema.describe("When the content is scheduled to be published (if applicable)")
 });
 
 // Tool input schema parser
 export const ContentCreationSchemaParser = ContentCreationSchema.refine(
-    data => data.microPlanId || data.brandName,
-    { message: "Either microPlanId or brandName must be provided" }
+    data => data.microPlanId || data.brandName || data.brandId,
+    { message: "Either microPlanId or brandName or brandId must be provided" }
 );
 
 // Content Update Schema for tools
