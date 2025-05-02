@@ -5,6 +5,11 @@
 export function stripNullValues(data: any): any {
     if (data === null || data === undefined) return undefined;
 
+    // Special case for Date objects - preserve them exactly as they are
+    if (data instanceof Date) {
+        return data;
+    }
+
     // If data is an array, process each item
     if (Array.isArray(data)) {
         const filteredArray = data

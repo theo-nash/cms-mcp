@@ -480,7 +480,7 @@ export function registerTwitterTools(server: McpServer) {
                 brand_id: brandId,
                 brand_name: brand.name,
                 publishing_user_id: params.user_id,
-                published_at: updatedContent.stateMetadata.updatedAt.toISOString(),
+                published_at: updatedContent.stateMetadata.publishedAt?.toISOString(),
                 character_count: content.content.length
             };
         }

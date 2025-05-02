@@ -30,20 +30,26 @@ export const BaseContentSchema = z.object({
         platformSpecificData: z.record(z.any()).optional().describe("Platform-specific metadata for the published content")
     }).optional().describe("Metadata about the published content"),
     stateMetadata: z.object({
-        updatedAt: dateSchema.describe("When the content was last updated"),
         updatedBy: z.string().describe("User ID of who last updated the content"),
         comments: z.string().optional().describe("Additional notes about the most recent update"),
         scheduledFor: optionalDateSchema.describe("When the content is scheduled to be published (if applicable)"),
         publishedAt: optionalDateSchema.describe("When the content was actually published (if applicable)"),
         publishedUrl: z.string().optional().describe("URL where the content was published (if applicable)")
-    }).describe("Metadata about content state and publishing")
+    }).default(() => ({
+        updatedBy: "system"
+    })).describe("Metadata about content state and publishing"),
+    // Versioning fields
+    version: z.number().int().min(1).default(1).describe("Version number of this content"),
+    isActive: z.boolean().default(true).describe("Whether this is the active version of the content"),
+    previousVersionId: z.string().nullable().optional().describe("ID of the previous version of this content"),
+    rootContentId: z.string().nullable().optional().describe("ID of the original root content this version is derived from")
 });
 
 // Full Content Schema for database
 export const ContentSchema = BaseContentSchema.extend({
     _id: z.string().optional().describe("Unique identifier for the content in the database"),
-    created_at: dateSchema.default(() => new Date()).describe("When the content was created"),
-    updated_at: dateSchema.default(() => new Date()).describe("When the content was last modified")
+    created_at: z.coerce.date().default(() => new Date()).describe("When the content was created"),
+    updated_at: z.coerce.date().default(() => new Date()).describe("When the content was last modified")
 });
 
 // Content Creation Schema for tools
@@ -51,6 +57,11 @@ export const ContentCreationSchema = BaseContentSchema.omit({
     publishedMetadata: true,
     stateMetadata: true,
     state: true,
+    // Omit versioning fields for creation
+    version: true,
+    isActive: true,
+    previousVersionId: true,
+    rootContentId: true
 }).extend({
     microPlanId: z.string().optional().describe("ID of the micro plan this content belongs to (if part of a plan)"),
     brandName: z.string().optional().describe("Name of the brand this content belongs to (for standalone content). Either brandName or brandId must be provided for standalone content"),
@@ -65,10 +76,10 @@ export const ContentCreationSchemaParser = ContentCreationSchema.refine(
 );
 
 // Content Update Schema for tools
-export const ContentUpdateSchema = ContentCreationSchema.extend({
-    content_id: z.string().describe("ID of the content to update")
+export const ContentUpdateSchema = ContentCreationSchema.partial().extend({
+    content_id: z.string().describe("ID of the content to update"),
+    create_new_version: z.boolean().optional().default(false).describe("Whether to create a new version when updating")
 });
-
 
 // Type definitions
 export type Content = z.infer<typeof ContentSchema>;

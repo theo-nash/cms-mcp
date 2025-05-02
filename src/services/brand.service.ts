@@ -171,4 +171,10 @@ export class BrandService {
         return cleanNulls(updatedBrand);
     }
 
+    async deleteBrand(brandId: string): Promise<Boolean | null> {
+        const brand = await this.brandRepository.delete(brandId);
+        if (!brand) return null;
+        return brand;
+    }
+
 }

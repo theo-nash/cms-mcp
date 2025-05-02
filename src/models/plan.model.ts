@@ -29,7 +29,6 @@ export const BasePlanSchema = z.object({
     .describe("Current state of the plan: draft, review, approved, or active"),
   stateMetadata: z.object({
     version: z.number().int().min(1).default(1).describe("Version number of the plan"),
-    updatedAt: dateSchema.default(() => new Date()).describe("When the plan was last updated"),
     updatedBy: z.string().describe("User ID of who last updated the plan"),
     comments: z.string().optional().describe("Additional notes about the most recent update")
   }).describe("Metadata about plan state changes"),
@@ -80,7 +79,8 @@ export const MicroPlanSchema = BasePlanSchema.extend({
     metricName: z.string().describe("Name of the performance metric"),
     target: z.number().describe("Target value for this metric"),
     actual: z.number().optional().describe("Actual achieved value")
-  })).optional().describe("Performance metrics for this micro plan")
+  })).optional().describe("Performance metrics for this micro plan"),
+  contentSchedule: z.string().optional().describe("Schedule for content creation for this micro plan")
 });
 
 // Combined Plan schema (union of Master and Micro)

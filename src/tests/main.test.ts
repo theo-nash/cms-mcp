@@ -6,12 +6,23 @@ import { PlanType, PlanState, MasterPlanUpdateParams, MicroPlanUpdateParams, Mas
 import { ContentState, ContentCreationParams, ContentUpdateParams } from "../models/content.model.js";
 import { BrandUpdateParams } from "../models/brand.model.js";
 import { CampaignCreationParams } from "../models/campaign.model.js";
+import { getDatabase } from "../config/db.js";
 
 // Initialize services
 const brandService = new BrandService();
 const campaignService = new CampaignService();
 const planService = new PlanService();
 const contentService = new ContentService();
+
+// Track document ids
+const documentIds: Map<string, string[]> = new Map<string, string[]>();
+
+function addDocumentId(collection: string, id: string) {
+    if (!documentIds.has(collection)) {
+        documentIds.set(collection, []);
+    }
+    documentIds.get(collection)!.push(id);
+}
 
 export async function runTests() {
     console.log("Starting CRUD tests...");
@@ -37,6 +48,37 @@ export async function runTests() {
         console.log("\nAll tests completed successfully!");
     } catch (error) {
         console.error("Test failed:", error);
+    } finally {
+        console.log("Cleaning up test documents...");
+        // Remove all test documents
+        for (const [collection, ids] of documentIds.entries()) {
+            for (const id of ids) {
+                try {
+                    // Delete document with the appropriate service
+                    switch (collection) {
+                        case "brands":
+                            await brandService.deleteBrand(id);
+                            break;
+                        case "campaigns":
+                            await campaignService.deleteCampaign(id);
+                            break;
+                        case "plans":
+                            await planService.deletePlan(id);
+                            break;
+                        case "contents":
+                            await contentService.deleteContent(id);
+                            break;
+                        default:
+                            console.warn(`No service found for collection: ${collection}`);
+                            break;
+                    }
+                    console.log(`Deleted document with ID: ${id}`);
+                } catch (error) {
+                    console.error(`Failed to delete document with ID: ${id}`, error);
+                }
+            }
+        }
+        console.log("Test documents cleanup completed.");
     }
 }
 
@@ -65,6 +107,7 @@ async function testBrandOperations() {
             ]
         }
     });
+    addDocumentId("brands", brand._id!);
 
     console.log(`Brand created with ID: ${brand._id}`);
 
@@ -100,7 +143,7 @@ async function testBrandOperations() {
 
     const updatedBrand = await brandService.updateBrand(updateData);
 
-    console.log(`Updated brand tone: ${updatedBrand?.guidelines?.tone}`);
+    console.log(`Updated brand tone: ${updatedBrand?.guidelines?.tone} at ${updatedBrand?.updated_at}`);
     console.log(`Brand has ${updatedBrand?.guidelines?.keyMessages?.length} key messages`);
 
     return brand;
@@ -156,6 +199,7 @@ async function testCampaignOperations(brandId: string) {
     }
 
     const campaign = await campaignService.createCampaign(campaignData);
+    addDocumentId("campaigns", campaign._id!);
 
     console.log(`Campaign created with ID: ${campaign._id}`);
 
@@ -167,6 +211,7 @@ async function testCampaignOperations(brandId: string) {
         brandName: brandName?.name,
         name: `${brandName?.name} Campaign`
     });
+    addDocumentId("campaigns", campaignWithBrandName._id!);
 
     console.log(`Campaign created with ID: ${campaignWithBrandName._id}`);
 
@@ -210,10 +255,11 @@ async function testCampaignOperations(brandId: string) {
         stateMetadata: {
             updatedBy: "test-user",
             comments: "Added conversion objective and mid-campaign milestone"
-        }
+        },
+        create_new_version: false
     });
 
-    console.log(`Updated campaign objectives: ${updatedCampaign?.objectives}`);
+    console.log(`Updated campaign objectives: ${updatedCampaign?.objectives} at ${updatedCampaign?.updated_at}`);
     console.log(`Campaign has ${updatedCampaign?.majorMilestones?.length} milestones`);
 
     return campaign;
@@ -249,6 +295,7 @@ async function testMasterPlanOperations(campaignId: string) {
     };
 
     const masterPlan = await planService.createMasterPlan(masterPlanData);
+    addDocumentId("plans", masterPlan._id!);
 
     console.log(`Master plan created with ID: ${masterPlan._id}`);
 
@@ -259,6 +306,7 @@ async function testMasterPlanOperations(campaignId: string) {
         ...data,
         campaignName: campaignName?.name,
     });
+    addDocumentId("plans", masterPlanWithCampaignName._id!);
 
     console.log(`Master plan created with ID: ${masterPlanWithCampaignName._id}`);
 
@@ -301,7 +349,7 @@ async function testMasterPlanOperations(campaignId: string) {
 
     const updatedMasterPlan = await planService.updatePlan(masterPlanUpdateData);
 
-    console.log(`Updated master plan goals: ${updatedMasterPlan?.goals}`);
+    console.log(`Updated master plan goals: ${updatedMasterPlan?.goals} at ${updatedMasterPlan?.updated_at}`);
     console.log(`Master plan content themes: ${(updatedMasterPlan as any)?.contentStrategy?.keyThemes}`);
 
     return masterPlan;
@@ -339,6 +387,7 @@ async function testMicroPlanOperations(masterPlanId: string) {
     };
 
     const microPlan = await planService.createMicroPlan(microPlanData);
+    addDocumentId("plans", microPlan._id!);
 
     console.log(`Micro plan created with ID: ${microPlan._id}`);
 
@@ -349,6 +398,7 @@ async function testMicroPlanOperations(masterPlanId: string) {
         ...data,
         masterPlanName: masterPlanName?.title
     });
+    addDocumentId("plans", microPlanWithMasterPlanName._id!);
 
     console.log(`Micro plan created with ID: ${microPlanWithMasterPlanName._id}`);
 
@@ -396,14 +446,14 @@ async function testMicroPlanOperations(masterPlanId: string) {
 
     const updatedMicroPlan = await planService.updatePlan(microPlanUpdateData);
 
-    console.log(`Updated micro plan content series: ${(updatedMicroPlan as any)?.contentSeries?.theme}`);
+    console.log(`Updated micro plan content series: ${(updatedMicroPlan as any)?.contentSeries?.theme} at ${updatedMicroPlan?.updated_at}`);
     console.log(`Micro plan expected pieces: ${(updatedMicroPlan as any)?.contentSeries?.expectedPieces}`);
 
     return microPlan;
 }
 
 async function testContentOperations(microPlanId: string, brandId: string) {
-    // Create content with micro plan
+    // Create content with micro plans
     console.log("Creating content with micro plan...");
     const contentWithPlanData: any = {
         microPlanId,
@@ -420,6 +470,7 @@ async function testContentOperations(microPlanId: string, brandId: string) {
     };
 
     const contentWithPlan = await contentService.createContent(contentWithPlanData);
+    addDocumentId("contents", contentWithPlan._id!);
 
     console.log(`Content with plan created with ID: ${contentWithPlan._id}`);
 
@@ -436,9 +487,9 @@ async function testContentOperations(microPlanId: string, brandId: string) {
     };
 
     const standaloneContent = await contentService.createContent(standaloneContentData);
+    addDocumentId("contents", standaloneContent._id!);
 
     console.log(`Standalone content created with ID: ${standaloneContent._id}`);
-
 
     // Read content
     console.log("Reading content...");
@@ -472,7 +523,7 @@ async function testContentOperations(microPlanId: string, brandId: string) {
 
     const updatedContent = await contentService.updateContent(updateContentData);
 
-    console.log(`Updated content: ${updatedContent?.content}`);
+    console.log(`Updated content: ${updatedContent?.content} at ${updatedContent?.updated_at}`);
     console.log(`Content keywords: ${updatedContent?.keywords}`);
 
     // Transition content state
@@ -483,7 +534,7 @@ async function testContentOperations(microPlanId: string, brandId: string) {
         { userId: "test-user", comments: "Content reviewed and ready for publishing" }
     );
 
-    console.log(`Content state updated to: ${readyContent?.state}`);
+    console.log(`Content state updated to: ${readyContent?.state} at ${readyContent?.updated_at}`);
 
     // Schedule content
     console.log("Scheduling content...");
@@ -505,6 +556,3 @@ async function testContentOperations(microPlanId: string, brandId: string) {
 
     return { contentWithPlan, standaloneContent };
 }
-
-// Run the tests
-runTests().catch(console.error); 

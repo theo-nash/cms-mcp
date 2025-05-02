@@ -2,7 +2,7 @@ import { Collection, ObjectId, Document, OptionalId } from "mongodb";
 import { getDatabase } from "../config/db.js";
 import { z } from "zod";
 import { deepMerge } from "../utils/merge.js";
-import { toDate } from "../utils/date.utils.js";
+import { toDate, normalizeDocumentDates, provideDefaultsForMissingFields } from "../utils/date.utils.js";
 import { stripNullValues } from "../utils/nulls.js";
 
 /**
@@ -165,66 +165,6 @@ export abstract class BaseRepository<T extends Document> {
         return processed;
     }
 
-
-    /**
-     * Provide default values for required fields that are missing
-     * Especially focused on date fields that are often required
-     */
-    protected provideDefaultsForMissingFields(data: any): any {
-        if (!data) return data;
-
-        // Handle arrays recursively
-        if (Array.isArray(data)) {
-            return data.map(item => this.provideDefaultsForMissingFields(item));
-        }
-
-        // Only process objects
-        if (typeof data !== 'object') return data;
-
-        const result = { ...data };
-
-        // Common date fields that are often required
-        const dateFields = [
-            'startDate',
-            'endDate',
-            'date',
-            'scheduledFor',
-            'publishedAt',
-            'dueDate',
-            'completedAt'
-        ];
-
-        // Provide default values for common required date fields if they're missing
-        for (const field of dateFields) {
-            if (result[field] === undefined || result[field] === null) {
-                // Use a placeholder date (epoch) that's clearly a placeholder
-                result[field] = new Date(0); // January 1, 1970
-            }
-        }
-
-        // Handle nested objects
-        for (const [key, value] of Object.entries(result)) {
-            if (value && typeof value === 'object' && !(value instanceof Date)) {
-                result[key] = this.provideDefaultsForMissingFields(value);
-            }
-        }
-
-        // Special handling for milestone arrays which commonly have date issues
-        if (result.majorMilestones && Array.isArray(result.majorMilestones)) {
-            result.majorMilestones = result.majorMilestones.map((milestone: any) => {
-                if (!milestone) return milestone;
-
-                // Ensure each milestone has a date
-                if (milestone.date === undefined || milestone.date === null) {
-                    milestone.date = new Date(0);
-                }
-                return milestone;
-            });
-        }
-
-        return result;
-    }
-
     /**
      * Ensure schema defaults are applied for missing values
      * This replaces null values with defaults from the schema where applicable
@@ -246,35 +186,33 @@ export abstract class BaseRepository<T extends Document> {
     /**
      * Validate data against schema
      */
-    protected validate(data: any): T {
-        // Process date fields before validation
-        const processedData = this.processDateFields(data);
+    protected validate(data: any, schema?: z.ZodType<any>): T {
+        schema = schema || this.schema;
 
-        // Apply schema defaults where possible
-        const dataWithDefaults = this.applySchemaDefaults(processedData);
+        // Process date fields before validation
+        const normalizedData = normalizeDocumentDates(data);
+
+        // Remove nulls
+        const strippedData = stripNullValues(normalizedData);
 
         try {
-            const validated = this.schema.parse(dataWithDefaults);
+            const validated = schema.parse(strippedData);
             return validated as T;
         } catch (error) {
-            // First try stripping null values
-            const strippedData = stripNullValues(dataWithDefaults);
+            console.error("Validation error:", error);
+            console.error("Data that failed validation:", data);
+
+            // If that fails, provide default values for required fields
+            const dataWithDefaultValues = provideDefaultsForMissingFields(strippedData);
 
             try {
-                const validated = this.schema.parse(strippedData);
+                const validated = schema.parse(dataWithDefaultValues);
                 return validated as T;
-            } catch (secondError: any) {
-                // If that fails, provide default values for required fields
-                const dataWithDefaultValues = this.provideDefaultsForMissingFields(strippedData);
-
-                try {
-                    const validated = this.schema.parse(dataWithDefaultValues);
-                    return validated as T;
-                } catch (thirdError: any) {
-                    // Only throw if all approaches fail
-                    throw new Error(`Validation failed even after applying defaults: ${thirdError.message}`);
-                }
+            } catch (thirdError: any) {
+                // Only throw if all approaches fail
+                throw new Error(`Validation failed even after applying defaults: ${thirdError.message}`);
             }
+
         }
     }
 
@@ -323,7 +261,6 @@ export abstract class BaseRepository<T extends Document> {
             ...result,
             _id: this.fromObjectId(result._id),
         };
-
         // Pass through validation to ensure all fields are properly formatted
         return this.validate(document);
     }
@@ -360,17 +297,15 @@ export abstract class BaseRepository<T extends Document> {
         const existingDoc = await this.findById(id);
         if (!existingDoc) return null;
 
-        // Process date fields in the update data
-        const processedData = this.processDateFields(data);
-
-        // Strip null values from the update data
-        const cleanedData = stripNullValues(processedData) || {};
+        const dataWithTimestamp = {
+            ...data,
+            updated_at: new Date()
+        }
 
         // Use deep merge to preserve nested data
-        const updatedDoc = deepMerge(existingDoc, {
-            ...cleanedData,
-            updated_at: new Date()
-        } as unknown as Partial<typeof existingDoc>);
+        let updatedDoc = deepMerge(existingDoc, dataWithTimestamp as unknown as Partial<T>);
+
+        updatedDoc = this.validate(updatedDoc);
 
         // Create a copy without _id for the update operation
         const { _id, ...updateData } = updatedDoc as any;

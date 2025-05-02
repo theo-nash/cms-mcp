@@ -51,7 +51,6 @@ export class PlanService {
       state: PlanState.Draft,
       stateMetadata: {
         version: 1,
-        updatedAt: new Date(),
         updatedBy: "system-user",
         comments: ""
       },
@@ -91,7 +90,6 @@ export class PlanService {
       state: PlanState.Draft,
       stateMetadata: {
         version: 1,
-        updatedAt: new Date(),
         updatedBy: "system-user",
         comments: ""
       },
@@ -247,17 +245,9 @@ export class PlanService {
       throw new Error("Plan not found");
     }
 
-    // Type the updates to the correct type
-    if (plan.type === PlanType.Master) {
-      updates = updates as MasterPlanUpdateParams;
-    } else {
-      updates = updates as MicroPlanUpdateParams;
-    }
-
     // Update state metadata
     const stateMetadata = {
       ...plan.stateMetadata,
-      updatedAt: new Date(),
       updatedBy: "system-user"
     };
 
@@ -444,4 +434,7 @@ export class PlanService {
     ) as MicroPlan;
   }
 
+  async deletePlan(id: string): Promise<Boolean | null> {
+    return await this.planRepository.delete(id);
+  }
 }

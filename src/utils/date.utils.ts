@@ -33,18 +33,6 @@ export function toDate(value: any): Date | undefined {
 }
 
 /**
- * Ensures a value is a valid Date object
- * @throws Error if the value cannot be converted to a valid Date
- */
-export function ensureDate(value: any, fieldName = 'date'): Date {
-    const date = toDate(value);
-    if (!date) {
-        throw new Error(`Invalid ${fieldName} value: ${value}`);
-    }
-    return date;
-}
-
-/**
  * Converts a Date to an ISO string
  * Handles undefined values safely
  */
@@ -103,21 +91,191 @@ export function addDays(date: Date, days: number): Date {
 import { z } from 'zod';
 
 /**
- * Creates a Zod schema for date fields that accepts:
- * - ISO date strings
- * - Date objects
- * 
- * Always transforms the value to a Date object
+ * Converts any value to a standardized Date object
+ * Handles various input formats consistently
  */
-export const dateSchema = z.union([
-    z.string().refine(
-        val => !isNaN(new Date(val).getTime()),
-        { message: 'Invalid date string format' }
-    ),
-    z.date()
-]).transform(val => ensureDate(val));
+export function normalizeDate(value: any): Date | undefined {
+    if (!value) return undefined;
+
+    // Already a Date object
+    if (value instanceof Date) {
+        return isNaN(value.getTime()) ? undefined : value;
+    }
+
+    // String (ISO format or other parseable string)
+    if (typeof value === "string") {
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? undefined : date;
+    }
+
+    // MongoDB BSON format (various possible structures)
+    if (typeof value === 'object') {
+        // Extended JSON format
+        if (value.$date) {
+            const timestamp = typeof value.$date === 'number'
+                ? value.$date
+                : typeof value.$date === 'string'
+                    ? Date.parse(value.$date)
+                    : undefined;
+
+            if (timestamp !== undefined) {
+                const date = new Date(timestamp);
+                return isNaN(date.getTime()) ? undefined : date;
+            }
+        }
+
+        // MongoDB ISODate wrapped object
+        if (value.toISOString && typeof value.toISOString === 'function') {
+            try {
+                return new Date(value.toISOString());
+            } catch (e) {
+                return undefined;
+            }
+        }
+    }
+
+    // Number (timestamp)
+    if (typeof value === 'number') {
+        const date = new Date(value);
+        return isNaN(date.getTime()) ? undefined : date;
+    }
+
+    return undefined;
+}
 
 /**
- * Creates a Zod schema for optional date fields
+ * Ensures a value is a valid Date object
+ * @throws Error if the value cannot be converted to a valid Date
  */
-export const optionalDateSchema = dateSchema.optional(); 
+export function ensureDate(value: any, fieldName = 'date'): Date {
+    const date = normalizeDate(value);
+    if (!date) {
+        throw new Error(`Invalid ${fieldName} value: ${JSON.stringify(value)}`);
+    }
+    return date;
+}
+
+/**
+ * Standardized schema for date fields
+ * Accepts many formats, always converts to Date objects
+ */
+export const dateSchema = z.preprocess(
+    (val) => normalizeDate(val),
+    z.date({
+        required_error: "Date is required",
+        invalid_type_error: "Invalid date format"
+    })
+);
+
+/**
+ * Standardized schema for optional date fields
+ * Nulls are converted to undefined
+ */
+export const optionalDateSchema = z.preprocess(
+    (val) => val === null ? undefined : normalizeDate(val),
+    z.date({
+        invalid_type_error: "Invalid date format"
+    }).optional()
+);
+
+/**
+ * Type guard to check if a value is likely a date field by name
+ */
+export function isDateFieldByName(fieldName: string): boolean {
+    const dateFieldNames = [
+        'date', 'created_at', 'updated_at', 'startDate', 'endDate',
+        'scheduledFor', 'publishedAt', 'updatedAt', 'completedAt',
+        'dueDate', 'expiresAt', 'activatedAt'
+    ];
+
+    return dateFieldNames.some(name =>
+        fieldName === name ||
+        fieldName.endsWith('Date') ||
+        fieldName.endsWith('At')
+    );
+}
+
+/**
+ * Process an object to normalize all date fields
+ */
+export function normalizeDocumentDates(data: any): any {
+    if (!data) return data;
+
+    // Handle arrays
+    if (Array.isArray(data)) {
+        return data.map(item => normalizeDocumentDates(item));
+    }
+
+    // Handle Date objects
+    if (data instanceof Date) {
+        return data;
+    }
+
+    // Only process objects
+    if (typeof data !== 'object') return data;
+
+    const result: Record<string, any> = {};
+
+    for (const [key, value] of Object.entries(data)) {
+        if (isDateFieldByName(key)) {
+            // Apply date normalization to known date fields
+            result[key] = normalizeDate(value);
+        } else if (value && typeof value === 'object' && !(value instanceof Date)) {
+            // Recursively process nested objects
+            result[key] = normalizeDocumentDates(value);
+        } else {
+            // Pass through other values
+            result[key] = value;
+        }
+    }
+
+    return result;
+}
+
+export function provideDefaultsForMissingFields(data: any): any {
+    if (!data) return data;
+
+    // Handle arrays recursively
+    if (Array.isArray(data)) {
+        return data.map(item => provideDefaultsForMissingFields(item));
+    }
+
+    // Special case for Date objects - preserve them
+    if (data instanceof Date) {
+        return data;
+    }
+
+    // Only process objects
+    if (typeof data !== 'object') return data;
+
+    const result = { ...data };
+
+    // Common date fields that are often required
+    const dateFields = [
+        'startDate',
+        'endDate',
+        'date',
+        'scheduledFor',
+        'publishedAt',
+        'dueDate',
+        'completedAt'
+    ];
+
+    // Provide default values ONLY for missing or null date fields, 
+    // not for existing Date objects even if they're epoch dates
+    for (const field of dateFields) {
+        if (result[field] === undefined || result[field] === null) {
+            // Use a placeholder date (epoch) that's clearly a placeholder
+            result[field] = new Date(0); // January 1, 1970
+        }
+    }
+
+    // Handle nested objects
+    for (const [key, value] of Object.entries(result)) {
+        if (value && typeof value === 'object' && !(value instanceof Date)) {
+            result[key] = provideDefaultsForMissingFields(value);
+        }
+    }
+
+    return result;
+}

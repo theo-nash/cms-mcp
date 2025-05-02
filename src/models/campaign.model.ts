@@ -49,14 +49,17 @@ export const BaseCampaignSchema = z.object({
       .describe("Current status of this milestone")
   })).default([]).describe("Major campaign milestones with dates and completion status"),
   stateMetadata: z.object({
-    updatedAt: dateSchema.default(() => new Date()).describe("When the campaign was last updated"),
     updatedBy: z.string().describe("User ID of who last updated the campaign"),
     comments: z.string().default("").describe("Additional notes about the most recent update")
   }).default(() => ({
-    updatedAt: new Date(),
     updatedBy: "system",
     comments: ""
-  })).describe("Metadata about campaign state changes")
+  })).describe("Metadata about campaign state changes"),
+  // Versioning fields
+  version: z.number().int().min(1).default(1).describe("Version number of this campaign"),
+  isActive: z.boolean().default(true).describe("Whether this is the active version of the campaign"),
+  previousVersionId: z.string().optional().describe("ID of the previous version of this campaign"),
+  rootCampaignId: z.string().optional().describe("ID of the original root campaign this version is derived from")
 });
 
 // Database model schema adds DB-specific fields
@@ -69,7 +72,12 @@ export const CampaignSchema = BaseCampaignSchema.extend({
 // Tool input schema for creating campaigns
 export const CampaignCreationSchema = BaseCampaignSchema.omit({
   status: true, // Status is set automatically
-  stateMetadata: true
+  stateMetadata: true,
+  // Omit versioning fields for creation
+  version: true,
+  isActive: true,
+  previousVersionId: true,
+  rootCampaignId: true
 }).extend({
   brandId: z.string().optional().describe("ID of the brand this campaign belongs to (either brandId or brandName required)"),
   brandName: z.string().optional().describe("Name of the brand this campaign belongs to (either brandId or brandName required)")
@@ -83,9 +91,15 @@ export const CampaignCreationSchemaParser = CampaignCreationSchema.refine(
 
 // Campaign Update Schema for tools 
 export const CampaignUpdateSchema = BaseCampaignSchema.partial().omit({
-  brandId: true
+  brandId: true,
+  // Omit versioning fields for updates
+  version: true,
+  isActive: true,
+  previousVersionId: true,
+  rootCampaignId: true
 }).extend({
   campaign_id: z.string().describe("ID of the campaign to update"),
+  create_new_version: z.boolean().optional().default(false).describe("Whether to create a new version when updating"),
   stateMetadata: z.object({
     updatedBy: z.string().optional().describe("User ID updating the campaign"),
     comments: z.string().optional().describe("Additional notes about the most recent update")
