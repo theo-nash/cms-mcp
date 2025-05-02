@@ -32,7 +32,7 @@ export const BasePlanSchema = z.object({
     updatedBy: z.string().describe("User ID of who last updated the plan"),
     comments: z.string().optional().describe("Additional notes about the most recent update")
   }).describe("Metadata about plan state changes"),
-  isActive: z.boolean().default(false).describe("Whether this plan is currently active"),
+  isActive: z.boolean().default(true).describe("Whether this plan is currently active"),
   created_at: dateSchema.default(() => new Date()).describe("When the plan was created"),
   updated_at: dateSchema.default(() => new Date()).describe("When the plan was last modified")
 });

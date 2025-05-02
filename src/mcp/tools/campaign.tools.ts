@@ -100,10 +100,12 @@ export function registerCampaignTools(server: McpServer) {
   // List all campaigns
   server.tool(
     "listCampaigns",
-    "List all campaigns in the system.",
-    {},
-    async () => {
-      const campaigns = await campaignService.getAllCampaigns();
+    "List all campaigns in the system. Choose between all active campaigns or all campaigns.",
+    {
+      activeOnly: z.boolean().default(false).describe("Whether to list only active campaigns or all campaigns.")
+    },
+    async (params) => {
+      const campaigns = await campaignService.getAllCampaigns(params.activeOnly);
       return {
         content: [
           {

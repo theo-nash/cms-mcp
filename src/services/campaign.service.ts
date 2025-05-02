@@ -49,12 +49,9 @@ export class CampaignService {
       throw new Error(`Campaign with name "${data.name}" already exists`);
     }
 
-    const userId = "system-user";
-
     // Create state metadata
     const stateMetadata = {
-      updatedAt: new Date(),
-      updatedBy: userId,
+      updatedBy: "system",
       comments: ""
     };
 
@@ -63,7 +60,12 @@ export class CampaignService {
       ...data,
       brandId: brand._id!,
       status: CampaignStatus.Draft,
-      stateMetadata
+      stateMetadata,
+      // Add versioning fields
+      version: 1,
+      isActive: true,
+      previousVersionId: undefined,
+      rootCampaignId: undefined
     });
   }
 
@@ -71,7 +73,18 @@ export class CampaignService {
    * Get campaign by ID
    */
   async getCampaignById(id: string): Promise<Campaign | null> {
-    return await this.campaignRepository.findById(id);
+    // First try to find by direct ID
+    const campaign = await this.campaignRepository.findById(id);
+
+    // If not found or if it's an active version, return it
+    if (!campaign || campaign.isActive) {
+      return campaign;
+    }
+
+    // If it's not active, find the active version with the same root
+    return await this.campaignRepository.findActiveVersionByRoot(
+      campaign.rootCampaignId || campaign._id!
+    );
   }
 
   /**
@@ -84,8 +97,8 @@ export class CampaignService {
   /**
    * Get all campaigns
    */
-  async getAllCampaigns(): Promise<Campaign[]> {
-    return await this.campaignRepository.find({});
+  async getAllCampaigns(activeOnly: boolean = true): Promise<Campaign[]> {
+    return await this.campaignRepository.find({}, activeOnly);
   }
 
   /**
@@ -110,18 +123,21 @@ export class CampaignService {
     const campaign = await this.campaignRepository.findById(updates.campaign_id);
     if (!campaign) return null;
 
+    // Check if we should create a new version or update in place
+    if (updates.create_new_version) {
+      return await this.createNewVersion(campaign, updates);
+    }
+
     // Process updates to handle nested objects
     const processedUpdates: Record<string, any> = { ...updates };
 
     // Update state metadata
     const stateMetadata = deepMerge(
       campaign.stateMetadata || {
-        updatedAt: new Date(),
         updatedBy: updates.stateMetadata?.updatedBy || "system",
         comments: updates.stateMetadata?.comments || ""
       },
       {
-        updatedAt: new Date(),
         updatedBy: updates.stateMetadata?.updatedBy || "system",
         comments: updates.stateMetadata?.comments || ""
       }
@@ -169,8 +185,169 @@ export class CampaignService {
       );
     }
 
+    // Handle status updates
+    if (updates.status && campaign.status) {
+      this.validateStatusTransition(
+        campaign.status as CampaignStatus,
+        updates.status as CampaignStatus
+      );
+      processedUpdates.status = updates.status;
+
+      // Set to active if status is active
+      if (updates.status === CampaignStatus.Active) {
+        processedUpdates.isActive = true;
+      } else {
+        processedUpdates.isActive = false;
+      }
+    }
+
     // Apply updates
     return await this.campaignRepository.update(updates.campaign_id, processedUpdates);
+  }
+
+  /**
+   * Create a new version of a campaign
+   */
+  private async createNewVersion(existingCampaign: Campaign, updates: CampaignUpdateParams): Promise<Campaign> {
+    // Strip non-campaign data fields from updates
+    const { campaign_id, create_new_version, ...campaignUpdates } = updates;
+
+    // Process updates to handle nested objects
+    const processedUpdates: Record<string, any> = { ...campaignUpdates };
+
+    // Update state metadata
+    const stateMetadata = deepMerge(
+      existingCampaign.stateMetadata || {
+        updatedAt: new Date(),
+        updatedBy: updates.stateMetadata?.updatedBy || "system",
+        comments: updates.stateMetadata?.comments || ""
+      },
+      {
+        updatedAt: new Date(),
+        updatedBy: updates.stateMetadata?.updatedBy || "system",
+        comments: updates.stateMetadata?.comments || `Created new version ${existingCampaign.version + 1}`
+      }
+    );
+
+    processedUpdates.stateMetadata = stateMetadata;
+
+    // Handle goals array if present
+    if (updates.goals && existingCampaign.goals) {
+      processedUpdates.goals = deepMergeArrays(
+        existingCampaign.goals,
+        updates.goals,
+        'type'
+      );
+    }
+
+    // Handle audience array if present
+    if (updates.audience && existingCampaign.audience) {
+      processedUpdates.audience = deepMergeArrays(
+        existingCampaign.audience,
+        updates.audience,
+        'segment'
+      );
+    }
+
+    // Handle contentMix array if present
+    if (updates.contentMix && existingCampaign.contentMix) {
+      processedUpdates.contentMix = deepMergeArrays(
+        existingCampaign.contentMix,
+        updates.contentMix,
+        'category'
+      );
+    }
+
+    // Handle majorMilestones array if present
+    if (updates.majorMilestones && existingCampaign.majorMilestones) {
+      processedUpdates.majorMilestones = deepMergeArrays(
+        existingCampaign.majorMilestones,
+        updates.majorMilestones,
+        'description'
+      );
+    }
+
+    // Prepare new version data:
+    // 1. It gets a new _id (assigned by MongoDB)
+    // 2. Increment version number
+    // 3. Set previously active version's isActive to false
+    // 4. Save reference to previous version
+    // 5. Keep reference to root version if it exists, otherwise use existing campaign ID
+
+    const newVersionData = {
+      ...existingCampaign,
+      ...processedUpdates,
+      version: existingCampaign.version + 1,
+      isActive: true,
+      previousVersionId: existingCampaign._id,
+      rootCampaignId: existingCampaign.rootCampaignId || existingCampaign._id,
+      updated_at: new Date()
+    };
+
+    // Create the new version
+    const newVersion = await this.campaignRepository.create(newVersionData);
+
+    // Set the previous version as inactive
+    await this.campaignRepository.update(existingCampaign._id!, {
+      isActive: false
+    });
+
+    return newVersion;
+  }
+
+  /**
+   * Get all versions of a campaign
+   */
+  async getAllCampaignVersions(campaignId: string): Promise<Campaign[]> {
+    const campaign = await this.campaignRepository.findById(campaignId);
+    if (!campaign) return [];
+
+    // Find the root campaign ID
+    const rootId = campaign.rootCampaignId || campaign._id!;
+
+    // Get all versions with this root
+    return await this.campaignRepository.findAllVersionsByRoot(rootId);
+  }
+
+  /**
+   * Get specific version of campaign
+   */
+  async getCampaignVersion(campaignId: string, version: number): Promise<Campaign | null> {
+    const campaign = await this.campaignRepository.findById(campaignId);
+    if (!campaign) return null;
+
+    // Find the root campaign ID
+    const rootId = campaign.rootCampaignId || campaign._id!;
+
+    // Find campaign with the same root and the specified version
+    return await this.campaignRepository.findVersionByRoot(rootId, version);
+  }
+
+  /**
+   * Activate a specific version of campaign
+   */
+  async activateCampaignVersion(campaignId: string, userId: string): Promise<Campaign | null> {
+    const campaign = await this.campaignRepository.findById(campaignId);
+    if (!campaign) return null;
+
+    // If already active, just return it
+    if (campaign.isActive) return campaign;
+
+    // Find the root campaign ID
+    const rootId = campaign.rootCampaignId || campaign._id!;
+
+    // Deactivate all versions with the same root
+    await this.campaignRepository.deactivateAllVersionsByRoot(rootId);
+
+    // Activate the specified version
+    return await this.campaignRepository.update(campaignId, {
+      isActive: true,
+      stateMetadata: {
+        ...campaign.stateMetadata,
+        updatedBy: userId,
+        comments: `Activated version ${campaign.version}`
+      }
+    });
   }
 
   /**
@@ -199,8 +376,8 @@ export class CampaignService {
   }
 
   /**
- * Update a single milestone's status
- */
+   * Update a single milestone's status
+   */
   async updateMilestoneStatus(
     campaignId: string,
     milestoneIndex: number,
@@ -223,7 +400,11 @@ export class CampaignService {
     };
 
     // Update the campaign
-    return await this.updateCampaign({ campaign_id: campaignId, majorMilestones });
+    return await this.updateCampaign({
+      campaign_id: campaignId,
+      majorMilestones,
+      create_new_version: false // Don't create a new version for milestone updates
+    });
   }
 
   async getCampaignsWithUpcomingMilestones(daysAhead: number = 7): Promise<Campaign[]> {

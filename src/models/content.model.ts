@@ -78,7 +78,63 @@ export const ContentCreationSchemaParser = ContentCreationSchema.refine(
 // Content Update Schema for tools
 export const ContentUpdateSchema = ContentCreationSchema.partial().extend({
     content_id: z.string().describe("ID of the content to update"),
-    create_new_version: z.boolean().optional().default(false).describe("Whether to create a new version when updating")
+    create_new_version: z.boolean().optional().default(false).describe("Whether to create a new version when updating (for version control)"),
+});
+
+// Parser for complete content object (includes validation of brandId and microPlanId)
+export const ContentParser = ContentSchema.refine(
+    data => data.microPlanId || data.brandId,
+    { message: "Either microPlanId or brandId must be provided" }
+);
+
+
+// ------- MEDIA ---------
+// -----------------------
+
+// Define generation parameters for images
+const ImageGenerationParams = z.object({
+    prompt: z.string().describe("Text prompt for image generation"),
+    negativePrompt: z.string().optional().describe("What to exclude from the image"),
+    style: z.string().optional().describe("Desired style or aesthetic (e.g., realistic, cartoon)"),
+    width: z.number().optional().describe("Width of the image in pixels"),
+    height: z.number().optional().describe("Height of the image in pixels"),
+    seed: z.number().optional().describe("Seed for reproducible results"),
+});
+
+// Define generation parameters for videos
+const VideoGenerationParams = z.object({
+    prompt: z.string().describe("Text prompt for video generation"),
+    duration: z.number().optional().describe("Desired duration in seconds"),
+    fps: z.number().optional().describe("Frames per second"),
+    width: z.number().optional().describe("Width of the video in pixels"),
+    height: z.number().optional().describe("Height of the video in pixels"),
+    scenes: z.array(z.string()).optional().describe("List of scene descriptions for the video"),
+});
+
+// Define media requirements with a discriminated union
+const MediaRequirement = z.discriminatedUnion("type", [
+    z.object({
+        type: z.literal("Image"),
+        id: z.string().describe("Unique identifier for this media requirement"),
+        url: z.string().optional().describe("URL of the image content"),
+        description: z.string().describe("Description of the media content"),
+        generationParams: ImageGenerationParams.optional().describe("Parameters for image generation"),
+    }),
+    z.object({
+        type: z.literal("Video"),
+        id: z.string().describe("Unique identifier for this media requirement"),
+        url: z.string().optional().describe("URL of the video content"),
+        description: z.string().describe("Description of the media content"),
+        generationParams: VideoGenerationParams.optional().describe("Parameters for video generation"),
+    }),
+    // Additional media types (e.g., Infographic) can be added here as needed
+]);
+
+// Extend the original BaseContentSchema with the enhanced mediaRequirements
+export const EnhancedContentSchema = BaseContentSchema.extend({
+    mediaRequirements: MediaRequirement.array()
+        .optional()
+        .describe("List of media requirements to accompany this content"),
 });
 
 // Type definitions

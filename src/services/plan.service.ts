@@ -284,7 +284,8 @@ export class PlanService {
     // Apply the state change
     return await this.planRepository.update(id, {
       state: targetState,
-      stateMetadata
+      stateMetadata,
+      isActive: targetState === PlanState.Active ? true : plan.isActive
     });
   }
 
@@ -323,7 +324,7 @@ export class PlanService {
   private validateStateTransition(currentState: PlanState, targetState: PlanState): void {
     // Define valid transitions
     const validTransitions: Record<PlanState, PlanState[]> = {
-      [PlanState.Draft]: [PlanState.Review],
+      [PlanState.Draft]: [PlanState.Review, PlanState.Approved],
       [PlanState.Review]: [PlanState.Draft, PlanState.Approved],
       [PlanState.Approved]: [PlanState.Active, PlanState.Draft],
       [PlanState.Active]: [PlanState.Draft]
@@ -331,7 +332,7 @@ export class PlanService {
 
     // Check if transition is valid
     if (!validTransitions[currentState].includes(targetState)) {
-      throw new Error(`Invalid state transition from ${currentState} to ${targetState}`);
+      throw new Error(`Invalid state transition from ${currentState} to ${targetState}.  Valid transitions are: ${validTransitions[currentState].join(", ")}`);
     }
   }
 

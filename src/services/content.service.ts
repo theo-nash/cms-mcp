@@ -57,10 +57,43 @@ export class ContentService {
     }
 
     /**
-     * Get content by brand ID (for standalone content)
+     * Get content by brand ID (for standalone content and content in micro plans)
      */
     async getContentByBrandId(brandId: string): Promise<Content[]> {
-        return await this.contentRepository.findByBrandId(brandId);
+        // 1. Direct content (standalone)
+        const directContent = await this.contentRepository.findByBrandId(brandId);
+
+        // 2. Indirect content (via micro plans)
+        const campaigns = await this.campaignRepository.findByBrandId(brandId);
+        const campaignIds = campaigns.map(c => c._id!);
+
+        // Get all master plans for these campaigns
+        const masterPlans = (await Promise.all(
+            campaignIds.map(id => this.planRepository.findMasterPlansByCampaignId(id))
+        )).flat();
+
+        const masterPlanIds = masterPlans.map(mp => mp._id!);
+
+        // Get all micro plans for these master plans
+        const microPlans = (await Promise.all(
+            masterPlanIds.map(id => this.planRepository.findMicroPlansByMasterId(id))
+        )).flat();
+
+        const microPlanIds = microPlans.map(mp => mp._id!);
+
+        // Get all content for these micro plans
+        const microPlanContentArrays = await Promise.all(
+            microPlanIds.map(id => this.getContentByMicroPlanId(id))
+        );
+        const indirectContent = microPlanContentArrays.flat();
+
+        // Combine and deduplicate by _id
+        const allContent = [...directContent, ...indirectContent];
+        const uniqueContent = Array.from(
+            new Map(allContent.map(c => [c._id, c])).values()
+        );
+
+        return uniqueContent;
     }
 
     /**
@@ -69,12 +102,16 @@ export class ContentService {
     async createContent(data: ContentCreationParams): Promise<Content> {
         data = ContentCreationSchemaParser.parse(data);
 
+        let brandId;
+        let microPlanId;
+
         // If microPlanId is provided, verify it exists
         if (data.microPlanId) {
             const microPlan = await this.planRepository.findById(data.microPlanId);
             if (!microPlan || microPlan.type !== PlanType.Micro) {
                 throw new Error(`Micro plan with ID ${data.microPlanId} not found`);
             }
+            microPlanId = microPlan._id!;
         }
 
         // If brandId is provided, verify it exists
@@ -83,6 +120,7 @@ export class ContentService {
             if (!brand) {
                 throw new Error(`Brand with ID ${data.brandId} not found`);
             }
+            brandId = brand._id!;
         }
 
         // if brandName is provided, verify it exists
@@ -91,11 +129,11 @@ export class ContentService {
             if (!brand) {
                 throw new Error(`Brand with name ${data.brandName} not found`);
             }
+            brandId = brand._id!;
         }
 
         // Create state metadata
         const stateMetadata = {
-            updatedAt: new Date(),
             updatedBy: "system-user",
             comments: "",
             ...(data.scheduledFor && { scheduledFor: data.scheduledFor })
@@ -107,8 +145,13 @@ export class ContentService {
         // Create the content with initial state
         return await this.contentRepository.create({
             ...rest,
+            brandId,
+            microPlanId,
             state: ContentState.Draft,
-            stateMetadata
+            stateMetadata,
+            // Add versioning fields
+            version: 1,
+            isActive: true
         });
     }
 
@@ -116,7 +159,18 @@ export class ContentService {
      * Get content by ID
      */
     async getContent(contentId: string): Promise<Content | null> {
-        return await this.contentRepository.findById(contentId);
+        // First try to find by direct ID
+        const content = await this.contentRepository.findById(contentId);
+
+        // If not found or if it's an active version, return it
+        if (!content || content.isActive) {
+            return content;
+        }
+
+        // If it's not active, find the active version with the same root
+        return await this.contentRepository.findActiveVersionByRoot(
+            content.rootContentId || content._id!
+        );
     }
 
     /**
@@ -134,10 +188,14 @@ export class ContentService {
             throw new Error("Can only update content in Draft or Ready state");
         }
 
+        // Check if we should create a new version or update in place
+        if (updates.create_new_version) {
+            return await this.createNewVersion(content, updates);
+        }
+
         // Update state metadata
         const stateMetadata = {
             ...content.stateMetadata,
-            updatedAt: new Date(),
             updatedBy: "system-user",
             scheduledFor: updates.scheduledFor ? ensureDate(updates.scheduledFor, 'scheduledFor') : content.stateMetadata.scheduledFor
         };
@@ -151,6 +209,103 @@ export class ContentService {
         return await this.contentRepository.update(updates.content_id, {
             ...updates,
             stateMetadata
+        });
+    }
+
+    /**
+     * Create a new version of content
+     */
+    private async createNewVersion(existingContent: Content, updates: ContentUpdateParams): Promise<Content> {
+        // Strip non-content data fields from updates
+        const { content_id, create_new_version, ...contentUpdates } = updates;
+
+        // Prepare new version data:
+        // 1. It gets a new _id (assigned by MongoDB)
+        // 2. Increment version number
+        // 3. Set previously active version's isActive to false
+        // 4. Save reference to previous version
+        // 5. Keep reference to root version if it exists, otherwise use existing content ID
+
+        const newVersionData: Omit<Content, "_id"> = {
+            ...existingContent,
+            ...contentUpdates,
+            version: existingContent.version + 1,
+            isActive: true,
+            previousVersionId: existingContent._id,
+            rootContentId: existingContent.rootContentId || existingContent._id,
+            stateMetadata: {
+                ...existingContent.stateMetadata,
+                updatedBy: "system-user",
+                scheduledFor: updates.scheduledFor
+                    ? ensureDate(updates.scheduledFor, 'scheduledFor')
+                    : existingContent.stateMetadata.scheduledFor
+            },
+            updated_at: new Date()
+        };
+
+        // Create the new version
+        const newVersion = await this.contentRepository.create(newVersionData);
+
+        // Set the previous version as inactive
+        await this.contentRepository.update(existingContent._id!, {
+            isActive: false
+        });
+
+        return newVersion;
+    }
+
+    /**
+     * Get all versions of a content
+     */
+    async getAllContentVersions(contentId: string): Promise<Content[]> {
+        const content = await this.contentRepository.findById(contentId);
+        if (!content) return [];
+
+        // Find the root content ID
+        const rootId = content.rootContentId || content._id!;
+
+        // Get all versions with this root
+        return await this.contentRepository.findAllVersionsByRoot(rootId);
+    }
+
+    /**
+     * Get specific version of content
+     */
+    async getContentVersion(contentId: string, version: number): Promise<Content | null> {
+        const content = await this.contentRepository.findById(contentId);
+        if (!content) return null;
+
+        // Find the root content ID
+        const rootId = content.rootContentId || content._id!;
+
+        // Find content with the same root and the specified version
+        return await this.contentRepository.findVersionByRoot(rootId, version);
+    }
+
+    /**
+     * Activate a specific version of content
+     */
+    async activateContentVersion(contentId: string, userId: string): Promise<Content | null> {
+        const content = await this.contentRepository.findById(contentId);
+        if (!content) return null;
+
+        // If already active, just return it
+        if (content.isActive) return content;
+
+        // Find the root content ID
+        const rootId = content.rootContentId || content._id!;
+
+        // Deactivate all versions with the same root
+        await this.contentRepository.deactivateAllVersionsByRoot(rootId);
+
+        // Activate the specified version
+        return await this.contentRepository.update(contentId, {
+            isActive: true,
+            stateMetadata: {
+                ...content.stateMetadata,
+                updatedBy: userId,
+                comments: `Activated version ${content.version}`
+            }
         });
     }
 
@@ -170,7 +325,6 @@ export class ContentService {
         // Update state metadata
         const stateMetadata = {
             ...content.stateMetadata,
-            updatedAt: new Date(),
             updatedBy: userId,
             scheduledFor: publishAt
         };
@@ -219,7 +373,6 @@ export class ContentService {
         // Update state metadata
         const stateMetadata = {
             ...content.stateMetadata,
-            updatedAt: new Date(),
             updatedBy: metadata.userId,
             comments: metadata.comments || content.stateMetadata.comments
         };
@@ -353,9 +506,12 @@ export class ContentService {
             publishedMetadata,
             stateMetadata: {
                 ...content.stateMetadata,
-                updatedAt: new Date(),
                 updatedBy: userId
             }
         });
+    }
+
+    async deleteContent(contentId: string): Promise<Boolean> {
+        return await this.contentRepository.delete(contentId);
     }
 }

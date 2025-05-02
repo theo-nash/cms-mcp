@@ -1,55 +1,140 @@
+import { Collection, ObjectId } from "mongodb";
 import { BaseRepository } from "./base.repository.js";
-import { Content, ContentSchema, ContentState } from "../models/content.model.js";
+import { Content, ContentParser, ContentSchema, ContentState } from "../models/content.model.js";
 import { MicroPlan, MicroPlanSchema, Plan } from "../models/plan.model.js";
 import { PlanType } from "../models/plan.model.js";
 import { MasterPlanSchema } from "../models/plan.model.js";
 import { MasterPlan } from "../models/plan.model.js";
 import { deepMerge } from "../utils/merge.js";
 
+/**
+ * Repository for content collection
+ */
 export class ContentRepository extends BaseRepository<Content> {
     constructor() {
-        super("contents", ContentSchema);
+        super("contents", ContentParser);
     }
 
     /**
-     * Find content by micro plan ID
+     * Find all content by micro plan ID
      */
     async findByMicroPlanId(microPlanId: string): Promise<Content[]> {
-        await this.initCollection();
-        return await this.find({ microPlanId })
+        return this.find({ microPlanId, isActive: true });
     }
 
     /**
-     * Find content by brand ID
+     * Find all content by brand ID (standalone content)
      */
     async findByBrandId(brandId: string): Promise<Content[]> {
-        return await this.find({ brandId })
+        return this.find({ brandId, isActive: true });
     }
 
     /**
-     * Find scheduled content that should be published
+     * Find all content scheduled before a date
      */
     async findScheduledBefore(date: Date): Promise<Content[]> {
-        return await this.find({
-            state: ContentState.Ready,
-            "stateMetadata.scheduledFor": { $lte: date }
+        return this.find({
+            "stateMetadata.scheduledFor": { $lte: date },
+            isActive: true
         });
     }
 
     /**
-    * Find content with scheduled dates
-    */
+     * Find all content with a scheduled date
+     */
     async findWithScheduledDate(): Promise<Content[]> {
-        return await this.find({
-            "stateMetadata.scheduledFor": { $exists: true }
-        })
+        return this.find({
+            "stateMetadata.scheduledFor": { $exists: true, $ne: null },
+            isActive: true
+        });
     }
 
     /**
      * Find content by state
      */
     async findByState(state: ContentState): Promise<Content[]> {
-        return await this.find({ state });
+        return this.find({ state, isActive: true });
+    }
+
+    /**
+     * Find active version by root content ID
+     */
+    async findActiveVersionByRoot(rootId: string): Promise<Content | null> {
+        const results = await this.find({
+            $or: [
+                { _id: rootId, isActive: true },
+                { rootContentId: rootId, isActive: true }
+            ]
+        });
+
+        return results.length > 0 ? results[0] : null;
+    }
+
+    /**
+     * Find all versions of content by root ID
+     */
+    async findAllVersionsByRoot(rootId: string): Promise<Content[]> {
+        return this.find({
+            $or: [
+                { _id: rootId },
+                { rootContentId: rootId }
+            ]
+        });
+    }
+
+    /**
+     * Find specific version of content by root ID and version number
+     */
+    async findVersionByRoot(rootId: string, version: number): Promise<Content | null> {
+        const results = await this.find({
+            $or: [
+                { _id: rootId, version },
+                { rootContentId: rootId, version }
+            ]
+        });
+
+        return results.length > 0 ? results[0] : null;
+    }
+
+    /**
+     * Deactivate all versions of content with the same root
+     */
+    async deactivateAllVersionsByRoot(rootId: string): Promise<void> {
+        await this.initCollection();
+
+        await this.collection.updateMany(
+            {
+                $or: [
+                    { _id: this.toObjectId(rootId) },
+                    { rootContentId: rootId }
+                ]
+            },
+            { $set: { isActive: false } }
+        );
+    }
+
+    /**
+     * Find content that need to be published - they're in Ready state with scheduledFor date in the past
+     */
+    async findContentReadyToPublish(): Promise<Content[]> {
+        const now = new Date();
+        return this.find({
+            state: ContentState.Ready,
+            "stateMetadata.scheduledFor": { $lte: now },
+            isActive: true
+        });
+    }
+
+    /**
+     * Override find method to only return active versions by default
+     */
+    async find(query: any = {}): Promise<Content[]> {
+        // If query doesn't specify isActive, only return active versions
+        if (query.isActive === undefined) {
+            query.isActive = true;
+        }
+
+        return super.find(query);
     }
 
     async update(id: string, updates: Partial<Omit<Content, "_id">>): Promise<Content | null> {

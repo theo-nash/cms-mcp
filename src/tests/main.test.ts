@@ -2,11 +2,10 @@ import { BrandService } from "../services/brand.service.js";
 import { CampaignService } from "../services/campaign.service.js";
 import { PlanService } from "../services/plan.service.js";
 import { ContentService } from "../services/content.service.js";
-import { PlanType, PlanState, MasterPlanUpdateParams, MicroPlanUpdateParams, MasterPlanCreationParams, MicroPlanCreationParams } from "../models/plan.model.js";
+import { PlanState, MasterPlanUpdateParams, MicroPlanUpdateParams, MasterPlanCreationParams, MicroPlanCreationParams } from "../models/plan.model.js";
 import { ContentState, ContentCreationParams, ContentUpdateParams } from "../models/content.model.js";
 import { BrandUpdateParams } from "../models/brand.model.js";
 import { CampaignCreationParams } from "../models/campaign.model.js";
-import { getDatabase } from "../config/db.js";
 
 // Initialize services
 const brandService = new BrandService();
@@ -431,6 +430,29 @@ async function testMicroPlanOperations(masterPlanId: string) {
     console.log("Getting all plans...");
     const allPlans = await planService.getAllMicroPlansByMasterId(masterPlanId);
     console.log(`Retrieved ${allPlans.length} plans`);
+
+    // Transition micro plan state
+    console.log("Transitioning micro plan state...");
+    const readyMicroPlan = await planService.transitionPlanState(
+        microPlan._id!,
+        PlanState.Approved,
+        { userId: "test-user", comments: "Micro plan reviewed and ready for execution" }
+    );
+    console.log(`Micro plan state updated to: ${readyMicroPlan?.state} at ${readyMicroPlan?.updated_at}`);
+
+    // Transition micro plan state to active
+    console.log("Transitioning micro plan state to active...");
+    const activeMicroPlan = await planService.transitionPlanState(
+        microPlan._id!,
+        PlanState.Active,
+        { userId: "test-user", comments: "Micro plan is now active" }
+    );
+    console.log(`Micro plan state updated to: ${activeMicroPlan?.state} at ${activeMicroPlan?.updated_at}`);
+    console.log(`Micro plan active status: ${activeMicroPlan?.isActive}`);
+
+    // Now fetch the plan from the database and check the state
+    const fetchedMicroPlan = await planService.getPlan(microPlan._id!);
+    console.log(`Fetched micro plan state: ${fetchedMicroPlan?.state}. Active status: ${fetchedMicroPlan?.isActive}`);
 
     // Update the micro plan
     console.log("Updating micro plan...");

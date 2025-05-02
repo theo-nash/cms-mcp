@@ -75,7 +75,7 @@ export function registerContentTools(server: McpServer) {
                 content: [
                     {
                         type: "text",
-                        text: `Content "${result.title}" successfully updated`
+                        text: `Content "${result.title}" successfully updated  ${params.create_new_version ? ` Version ID: ${result._id}` : ''}`
                     }
                 ],
                 content_id: result._id,
